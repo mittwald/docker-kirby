@@ -1,10 +1,13 @@
 {
-  "$comment": "Single source of truth for every image that gets built. See docs/adding-a-version.md before editing by hand.",
+  "$comment": "Single source of truth for every image that gets built. Adding a Kirby major is not just an entry here: see .agents/skills/add-kirby-branch/SKILL.md.",
   "image": "mittwald/kirby",
   "defaults": {
     "frankenphp": "1",
     "os": "trixie",
-    "platforms": ["linux/amd64", "linux/arm64"]
+    "platforms": [
+      "linux/amd64",
+      "linux/arm64"
+    ]
   },
   "branches": [
     {

@@ -11,13 +11,17 @@ log until something breaks:
 Patch and minor releases of Kirby are *not* handled here — the build resolves
 those from Packagist on every run, so they need no commit.
 
-Run with --apply in CI and open a pull request when anything changed; the
-normal build matrix then smoke tests the proposal before a human merges it.
+The two findings are handled differently, on purpose. A PHP bump is applied and
+becomes a pull request the build matrix can verify end to end. A new major is
+only *reported*: it needs a plainkit release that may not exist yet, a decision
+about the `latest` tag, a decision about the branch it replaces and a README
+table that nothing generates, so it becomes a tracking issue that hands off to
+the add-kirby-branch skill rather than a PR that looks finished and is not.
 
 Usage:
     scripts/check-updates.py                     # report only
-    scripts/check-updates.py --apply             # rewrite versions.json
-    scripts/check-updates.py --apply --github-output
+    scripts/check-updates.py --apply             # apply the PHP bumps
+    scripts/check-updates.py --apply --handoffs-to issues.json --github-output
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PACKAGIST_URL = "https://repo.packagist.org/p2/getkirby/cms.json"
+PLAINKIT_URL = "https://repo.packagist.org/p2/getkirby/plainkit.json"
 DOCKERHUB_TAG_URL = "https://hub.docker.com/v2/repositories/dunglas/frankenphp/tags/{tag}"
 STABLE_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 PHP_MINOR_RE = re.compile(r"(\d+)\.(\d+)")
@@ -100,15 +105,44 @@ def best_php(release: dict, frankenphp: str, os_variant: str) -> str | None:
     return None
 
 
+def plainkit_majors(cache: list = []) -> set[int]:
+    """Major versions Kirby's plainkit has a stable release for.
+
+    The kit supplies the site skeleton but is released on its own schedule —
+    its 4.x line stopped at 4.8.0 while Kirby 4 went on — so a new CMS major
+    does not imply a matching kit.
+    """
+    if not cache:
+        payload = get_json(PLAINKIT_URL)
+        cache.append(
+            {
+                int(match.group(1))
+                for package in payload["packages"]["getkirby/plainkit"]
+                if (match := STABLE_RE.match(package["version"]))
+            }
+        )
+    return cache[0]
+
+
 def newest_for_major(releases: dict, major: int) -> tuple[int, int, int] | None:
     matching = sorted((v for v in releases if v[0] == major), reverse=True)
     return matching[0] if matching else None
 
 
-def check(manifest: dict, releases: dict) -> tuple[list[str], bool]:
-    """Returns the report lines and whether the manifest was modified."""
+def check(manifest: dict, releases: dict) -> dict:
+    """Split what upstream changed into what this script may finish and what it
+    may not.
+
+    A PHP bump is a version string: mechanical, verifiable by CI, safe to
+    apply. A new Kirby major is not — it needs a plainkit that may not exist
+    yet, a decision about the `latest` tag, a decision about the branch it
+    replaces, and a README table that nothing generates. Applying three lines
+    of JSON for it would produce a pull request that looks finished and is not,
+    so those are handed to the add-kirby-branch skill instead.
+    """
     defaults = manifest.get("defaults", {})
     findings: list[str] = []
+    handoffs: list[dict] = []
     changed = False
 
     configured_majors = set()
@@ -141,6 +175,9 @@ def check(manifest: dict, releases: dict) -> tuple[list[str], bool]:
             changed = True
 
     # --- 2. Kirby majors that nothing builds --------------------------------
+    # Detected here, decided by a human or the add-kirby-branch skill. The
+    # facts that skill would otherwise have to go and gather are collected now,
+    # while the Packagist responses are already in hand.
     for major in sorted({version[0] for version in releases}, reverse=True):
         if major in configured_majors:
             continue
@@ -149,40 +186,109 @@ def check(manifest: dict, releases: dict) -> tuple[list[str], bool]:
             continue
 
         version = newest_for_major(releases, major)
+        release = ".".join(map(str, version))
         frankenphp = defaults.get("frankenphp", "1")
         os_variant = defaults.get("os", "trixie")
         php = best_php(releases[version], frankenphp, os_variant)
-
-        if php is None:
-            findings.append(
-                f"- Kirby {major} is released ({'.'.join(map(str, version))}) but no "
-                f"FrankenPHP image exists for any PHP version it supports. Needs a look."
-            )
-            continue
+        kit_available = major in plainkit_majors()
+        current_latest = next(
+            (b["name"] for b in manifest["branches"] if b.get("latest")), None
+        )
 
         findings.append(
-            f"- **New major**: Kirby {major} ({'.'.join(map(str, version))}) is not built yet. "
-            f"Added a branch on PHP `{php}`. The `latest` tag was left where it is — "
-            f"move it deliberately once you are ready to make Kirby {major} the default."
+            f"- **New major**: Kirby {major} ({release}) is not built yet. "
+            f"Left for the `add-kirby-branch` skill — see the tracking issue."
         )
-        manifest["branches"].insert(
-            0,
-            {"name": str(major), "constraint": f"^{major}.0", "php": php},
+        handoffs.append(
+            {
+                "major": major,
+                "title": f"Kirby {major} is released and not built yet",
+                "body": new_major_issue(
+                    major, release, php, kit_available, current_latest, frankenphp, os_variant
+                ),
+            }
         )
-        changed = True
 
-    return findings, changed
+    return {"findings": findings, "handoffs": handoffs, "changed": changed}
+
+
+def new_major_issue(
+    major: int,
+    release: str,
+    php: str | None,
+    kit_available: bool,
+    current_latest: str | None,
+    frankenphp: str,
+    os_variant: str,
+) -> str:
+    """The tracking issue body: the facts, then the decisions, then the skill."""
+    php_line = (
+        f"- Highest PHP supported by both Kirby {major} and FrankenPHP: **{php}** "
+        f"(`dunglas/frankenphp:{frankenphp}-php{php}-{os_variant}`)."
+        if php
+        else f"- **No FrankenPHP image exists for any PHP version Kirby {major} supports.** "
+        f"This has to be resolved before the branch can be added at all."
+    )
+    kit_line = (
+        f"- `getkirby/plainkit` has a matching `^{major}.0`, so the default kit constraint works."
+        if kit_available
+        else f"- **`getkirby/plainkit` has no `^{major}.0` release.** The build installs the site "
+        f"skeleton with `composer create-project getkirby/plainkit`, so the branch needs an "
+        f'explicit `"plainkit": "^{major - 1}.0"` until the matching kit ships, or '
+        f"`composer create-project` fails with "
+        f"`Could not find package getkirby/plainkit with version ^{major}.0`."
+    )
+
+    return f"""\
+Kirby **{major}.x** is on Packagist (newest stable: `{release}`) and no branch in
+`versions.json` builds it.
+
+This was detected by `.github/workflows/update-versions.yml`, which deliberately
+did **not** open a pull request for it. Adding a major is not a version-string
+change: it needs the decisions listed below, and a `versions.json` edit alone
+would produce a PR that looks finished while leaving the `latest` tag, the
+end-of-life question and the README table untouched.
+
+## What the automation already checked
+
+{php_line}
+{kit_line}
+- The `latest` tag currently points at branch `{current_latest or "(none)"}`.
+
+## What needs deciding
+
+- [ ] Add the branch to `versions.json` (with an explicit `plainkit` constraint if the check above says so).
+- [ ] Decide whether `latest` moves to Kirby {major}, and when. Moving it changes what every unpinned `docker pull` gets.
+- [ ] Decide whether the oldest branch is now end of life and should stop being built.
+- [ ] Update the supported-tags table in `README.md`; nothing generates it.
+
+## How
+
+Run the `add-kirby-branch` skill (`.agents/skills/add-kirby-branch/SKILL.md`).
+It covers each of the above, including the plainkit lag and the local build and
+smoke test to run before opening the PR.
+"""
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, default=REPO_ROOT / "versions.json")
-    parser.add_argument("--apply", action="store_true", help="write the proposed changes")
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="write the changes this script may finish on its own (PHP bumps)",
+    )
+    parser.add_argument(
+        "--handoffs-to",
+        type=Path,
+        help="write the new-major tracking issues to this file as JSON",
+    )
     parser.add_argument("--github-output", action="store_true")
     args = parser.parse_args()
 
     manifest = json.loads(args.manifest.read_text())
-    findings, changed = check(manifest, fetch_releases())
+    result = check(manifest, fetch_releases())
+    findings, handoffs, changed = result["findings"], result["handoffs"], result["changed"]
 
     if findings:
         report = "The following upstream changes are not reflected in `versions.json` yet:\n\n"
@@ -192,13 +298,22 @@ def main() -> int:
 
     print(report)
 
+    if handoffs:
+        print("\nHanded to the add-kirby-branch skill:", file=sys.stderr)
+        for handoff in handoffs:
+            print(f"  - {handoff['title']}", file=sys.stderr)
+
     if changed and args.apply:
         args.manifest.write_text(json.dumps(manifest, indent=2) + "\n")
         print(f"\nwrote {args.manifest}", file=sys.stderr)
 
+    if args.handoffs_to:
+        args.handoffs_to.write_text(json.dumps(handoffs, indent=2) + "\n")
+
     if args.github_output and (output := os.environ.get("GITHUB_OUTPUT")):
         with open(output, "a", encoding="utf-8") as handle:
             handle.write(f"changed={'true' if changed else 'false'}\n")
+            handle.write(f"handoffs={'true' if handoffs else 'false'}\n")
             handle.write("report<<EOF\n" + report + "\nEOF\n")
 
     return 0

@@ -1,9 +1,17 @@
 name: update versions
 
-# Watches for the two upstream changes that a build cannot pick up on its own:
-# a new Kirby major, and a newer PHP minor supported by both Kirby and
-# FrankenPHP. Anything it finds becomes a pull request, which the normal CI
-# pipeline then builds and smoke tests before a human merges it.
+# Watches for the two upstream changes that a build cannot pick up on its own,
+# and treats them differently because they are different in kind:
+#
+#   - A newer PHP minor supported by both Kirby and FrankenPHP is a version
+#     string. It is applied and becomes a pull request that CI builds and smoke
+#     tests end to end, so it can be reviewed and merged as it stands.
+#
+#   - A new Kirby major cannot be finished here. It needs a plainkit release
+#     that may not exist yet, a decision about the `latest` tag, a decision
+#     about the branch it replaces, and a README table that nothing generates.
+#     So it becomes a tracking issue that hands off to the add-kirby-branch
+#     skill, carrying the facts that skill would otherwise have to gather.
 #
 # New Kirby *patch* releases need no run of this workflow — the daily publish
 # resolves those from Packagist by itself.
@@ -20,6 +28,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   propose:
@@ -30,14 +39,20 @@ jobs:
 
       - name: Check Kirby and FrankenPHP for changes
         id: check
-        run: python3 scripts/check-updates.py --apply --github-output
+        run: |
+          python3 scripts/check-updates.py \
+            --apply \
+            --handoffs-to "${RUNNER_TEMP}/handoffs.json" \
+            --github-output
 
       - name: Report
         env:
           REPORT: ${{ steps.check.outputs.report }}
         run: printf '%s\n' "$REPORT" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Open pull request
+      # Mechanical and verifiable: CI builds and smoke tests the proposal, so a
+      # green run means the new PHP version actually boots and serves Kirby.
+      - name: Open pull request for the applied changes
         if: steps.check.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v7
         with:
@@ -52,15 +67,33 @@ jobs:
 
             ---
 
-            Opened by `.github/workflows/update-versions.yml`. CI builds and
-            smoke tests every branch in `versions.json`, so a green run here
-            means the proposed combination actually boots and serves Kirby.
+            Opened by `.github/workflows/update-versions.yml`, which only
+            applies changes it can finish on its own. CI builds and smoke tests
+            every branch in `versions.json`, so a green run here means the
+            proposed combination actually boots and serves Kirby.
 
-            Things this automation deliberately does **not** decide for you:
+            To freeze a branch's PHP version against this automation, add
+            `"phpPolicy": "pinned"` to it.
 
-            - Which branch carries the `latest` tag. Set `"latest": true` on
-              the branch you want it on, and remove it from the old one.
-            - When to drop an end-of-life branch. Deleting the entry stops the
-              builds; tags already on Docker Hub stay where they are.
-            - Whether a PHP bump is wanted at all. Add
-              `"phpPolicy": "pinned"` to a branch to freeze its PHP version.
+      # Not mechanical: handed to the add-kirby-branch skill as an issue rather
+      # than guessed at in a pull request. One issue per major, reopened never
+      # and duplicated never — an existing open issue with the same title is
+      # left alone.
+      - name: Open tracking issues for new Kirby majors
+        if: steps.check.outputs.handoffs == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HANDOFFS: ${{ runner.temp }}/handoffs.json
+        run: |
+          count="$(jq 'length' "$HANDOFFS")"
+          for index in $(seq 0 $((count - 1))); do
+            title="$(jq -r ".[${index}].title" "$HANDOFFS")"
+            if gh issue list --state open --search "$title in:title" --json title \
+                 --jq '.[].title' | grep -qxF "$title"; then
+              echo "already tracked: ${title}"
+              continue
+            fi
+            jq -r ".[${index}].body" "$HANDOFFS" > "${RUNNER_TEMP}/body.md"
+            gh issue create --title "$title" --body-file "${RUNNER_TEMP}/body.md" \
+              --label automation
+          done

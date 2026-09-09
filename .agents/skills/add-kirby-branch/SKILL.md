@@ -7,8 +7,18 @@ description: Add a new Kirby major version branch to the images, move the `lates
 
 Every image this repo builds is described by one entry in `versions.json`.
 Adding a version is a data change; there is no Dockerfile or workflow to touch.
-`.github/workflows/update-versions.yml` already adds newly released majors on
-its own — this skill covers the parts it deliberately refuses to decide.
+
+**This skill is the other half of `.github/workflows/update-versions.yml`.**
+That workflow detects a new Kirby major weekly and opens a tracking issue
+titled *"Kirby N is released and not built yet"*, labelled `automation`. It
+deliberately does not open a pull request, because a `versions.json` edit alone
+would look finished while leaving the `latest` tag, the end-of-life question
+and the README table untouched. The issue carries the facts it already checked
+— the best PHP version, whether a matching plainkit exists, where `latest`
+currently points — so start from the issue and skip re-gathering them.
+
+The workflow *does* apply PHP bumps for existing branches on its own; those
+arrive as an ordinary pull request and need nothing from this skill.
 
 ## Adding a branch
 
@@ -107,4 +117,4 @@ fix the image rather than the assertion, and only relax an assertion when the
 upstream change is deliberate and you can point at the release notes.
 
 Finally update the supported-versions table in `README.md`; nothing generates
-it.
+it. Then close the tracking issue that sent you here, referencing the PR.

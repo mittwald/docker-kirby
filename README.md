@@ -272,9 +272,12 @@ The design goal was that routine upkeep needs no commits.
 - **Kirby patch and minor releases** are resolved from Packagist on every build. The daily publish picks up a new `5.5.4` the day it appears, with no change here.
 - **The site skeleton** is installed from Kirby's plainkit during the build, so templates, blueprints and starting content are never something this repository has to keep in step with upstream.
 - **Security updates** in PHP, FrankenPHP and Debian arrive through the same daily rebuild, which runs with the layer cache disabled so updated packages are actually installed.
-- **New Kirby majors and PHP bumps** are detected weekly by `scripts/check-updates.py`, which opens a pull request. CI builds and smoke tests it; a human decides whether `latest` moves.
+- **PHP bumps** are detected weekly by `scripts/check-updates.py` and applied as a pull request. CI builds and smoke tests it, so a green run means the new PHP version actually serves Kirby and the PR can be merged as it stands.
+- **New Kirby majors** are detected by the same run, but deliberately *not* turned into a pull request. Adding a major needs a plainkit release that may not exist yet, a decision about the `latest` tag, a decision about the branch it replaces, and a README table that nothing generates — so it becomes a tracking issue that hands off to the `add-kirby-branch` skill, pre-filled with the facts the automation already checked.
 - **GitHub Actions versions** are updated by Dependabot.
 - **Everything else** — a new required extension, a renamed Kirby root, a changed recommendation in the docs — is covered by the skills in `.agents/skills/`, written for an agent to run periodically.
+
+The split is the point: the workflow applies what it can finish and verify, and hands off what needs judgement instead of producing a pull request that looks complete and is not.
 
 Every build runs `scripts/smoke-test.sh` against the loaded image before anything is pushed. It starts real containers and checks that Kirby renders, that environment variables reach the CMS, that `content`, `site` and `kirby` are not web-reachable, that volumes survive a container replacement, and that the root-to-`kirby` privilege drop works.
 
