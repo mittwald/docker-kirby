@@ -21,6 +21,7 @@ Fetch these four pages and treat them as the source of truth:
 | <https://getkirby.com/docs/guide/configuration/custom-folder-setup> | The roots in `image/app/public/index.php` |
 | <https://getkirby.com/docs/cookbook/development-deployment/caddy> | The blocking rules in `image/Caddyfile` |
 | <https://getkirby.com/docs/reference/system/options> | The option names in `image/share/env-options.php` |
+| <https://github.com/getkirby/plainkit> | The site skeleton, and the layout the build rearranges |
 
 Check the docs for the **oldest** branch in `versions.json` as well, not just
 the newest — `v4.getkirby.com` mirrors the Kirby 4 documentation.
@@ -45,7 +46,8 @@ the newest — `v4.getkirby.com` mirrors the Kirby 4 documentation.
    restart without failing:
    - the `roots` array in `image/app/public/index.php`
    - `writable_roots()` in `image/entrypoint.sh`
-   - the `mkdir -p` list and the `VOLUME` instruction in `image/Dockerfile`
+   - the builder's `mkdir -p` list and the `VOLUME` instruction in
+     `image/Dockerfile`
    - the volume table in `README.md`
 
    A root that is writable but *not* under `VOLUME` is the failure mode to
@@ -58,7 +60,28 @@ the newest — `v4.getkirby.com` mirrors the Kirby 4 documentation.
    a rule that is *not* about hiding those directories, it probably belongs in
    `image/Caddyfile`.
 
-4. **Option names.** Kirby options are case sensitive and some are camelCase
+4. **The plainkit layout.** The site skeleton is installed with
+   `composer create-project getkirby/plainkit`, and the builder then moves a
+   few things into the public/private layout: `media` under `public/`, the
+   writable directories into `storage/`, and plainkit's own `index.php` and
+   `.htaccess` deleted. That rearrangement encodes assumptions about what
+   plainkit ships.
+
+   Compare the current kit against them:
+
+   ```
+   composer create-project getkirby/plainkit /tmp/kit "^5.0" --no-interaction
+   ls -a /tmp/kit
+   ```
+
+   A **new top-level directory** is the case to think about. Anything private
+   needs no action — it stays under `/app` and is unreachable over HTTP, which
+   is the safe default. Anything that has to be *served*, an `assets/`
+   directory for instance, has to be moved under `public/` in the builder or it
+   will silently 404. A directory that has to be *writable* also needs adding
+   to the roots, the entrypoint and the volumes, per check 2.
+
+5. **Option names.** Kirby options are case sensitive and some are camelCase
    (`api.allowImpersonation`). Verify that every key in the `$map` array in
    `image/share/env-options.php` still exists in the options reference, and
    that none was renamed. A silently ignored option is worse than a missing
@@ -69,12 +92,15 @@ the newest — `v4.getkirby.com` mirrors the Kirby 4 documentation.
 Never hand back an untested edit. For each branch in `versions.json`:
 
 ```
-docker buildx build --build-arg KIRBY_VERSION=<resolved version> -t kirby-audit:<branch> --load ./image
+docker buildx build \
+  --build-arg KIRBY_VERSION=<resolved version> \
+  --build-arg PLAINKIT_CONSTRAINT=<plainkit constraint> \
+  -t kirby-audit:<branch> --load ./image
 scripts/smoke-test.sh kirby-audit:<branch> --kirby-version <resolved version> --php-version <php>
 ```
 
-`python3 scripts/resolve-versions.py` prints the resolved version for each
-branch.
+`python3 scripts/resolve-versions.py` prints the resolved Kirby version and the
+plainkit constraint for each branch.
 
 ## Output
 

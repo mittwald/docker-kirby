@@ -85,6 +85,25 @@ class MatrixTest(unittest.TestCase):
         self.assertEqual(matrix[0]["base_image"], "dunglas/frankenphp:1-php8.4-trixie")
         self.assertEqual(matrix[1]["base_image"], "dunglas/frankenphp:1-php8.3-trixie")
 
+    def test_plainkit_defaults_to_the_resolved_major(self):
+        matrix = resolve.build_matrix(
+            self.manifest([{"name": "4", "constraint": "^4.0", "php": "8.4"}]), AVAILABLE
+        )
+
+        self.assertEqual(matrix[0]["plainkit"], "^4.0")
+
+    def test_plainkit_can_be_pinned_per_branch(self):
+        # plainkit lags the CMS, so a branch may have to name an older kit than
+        # its own major.
+        matrix = resolve.build_matrix(
+            self.manifest(
+                [{"name": "6", "constraint": "^5.0", "php": "8.4", "plainkit": "^5.0"}]
+            ),
+            AVAILABLE,
+        )
+
+        self.assertEqual(matrix[0]["plainkit"], "^5.0")
+
     def test_branch_overrides_beat_defaults(self):
         matrix = resolve.build_matrix(
             self.manifest(

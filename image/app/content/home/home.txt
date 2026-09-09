@@ -1,5 +1,0 @@
-Title: Home
-
-----
-
-Text: This is the default content that ships with the mittwald/kirby image. Mount your own `content` volume or copy a `content` directory into a derived image to replace it.

@@ -39,28 +39,54 @@ RUN install-php-extensions \
 
 
 # ---------------------------------------------------------------------------
-# Composer stage: resolves and installs the pinned Kirby release.
+# Composer stage: installs Kirby's own plainkit as the site skeleton and pins
+# the CMS to the release the build matrix resolved.
 # ---------------------------------------------------------------------------
 FROM php-base AS builder
 
 ARG KIRBY_VERSION
+ARG PLAINKIT_CONSTRAINT
 
 RUN install-php-extensions @composer-2
 
-WORKDIR /app
+ENV COMPOSER_ALLOW_SUPERUSER=1
 
-# Only the manifest is copied so that edits to templates or content do not
-# invalidate the (slow) dependency resolution layer.
-COPY app/composer.json ./composer.json
-
+# The skeleton is Kirby's plainkit rather than something maintained here, so
+# templates, blueprints and the starting content stay upstream's business.
+#
+# plainkit is *not* released in lockstep with the CMS — its 4.x line stopped at
+# 4.8.0 while Kirby 4 kept going — so the kit is resolved by major version and
+# the exact CMS release is pinned right after. The version check makes a
+# resolution that ignores the pin fail the build instead of shipping.
+# Built in /kit rather than /app because the FrankenPHP base image already
+# ships a welcome page at /app/public, and create-project refuses a non-empty
+# target directory.
 RUN --mount=type=cache,target=/tmp/composer,sharing=locked \
-	COMPOSER_HOME=/tmp/composer composer require \
+	COMPOSER_HOME=/tmp/composer composer create-project \
+		getkirby/plainkit /kit "${PLAINKIT_CONSTRAINT:?PLAINKIT_CONSTRAINT build argument is required}" \
+		--no-interaction \
+		--no-progress \
+		--remove-vcs \
+	&& COMPOSER_HOME=/tmp/composer composer require --working-dir=/kit \
 		"getkirby/cms:${KIRBY_VERSION:?KIRBY_VERSION build argument is required}" \
 		--no-interaction \
 		--no-progress \
 		--no-audit \
 		--optimize-autoloader \
-	&& test -f /app/kirby/bootstrap.php
+	&& test -f /kit/kirby/bootstrap.php \
+	&& test "$(php -r 'require "/kit/kirby/bootstrap.php"; echo Kirby::version();')" = "${KIRBY_VERSION}"
+
+# plainkit ships the flat layout, with index.php in the document root. This
+# image serves /app/public instead, so content, site, kirby and vendor cannot
+# be requested over HTTP at all rather than relying on the web server to hide
+# them. Only the front controller and the writable roots move; everything else
+# plainkit ships stays exactly where it put it.
+RUN set -eux; \
+	mkdir -p /kit/public /kit/site/config /kit/site/plugins; \
+	mv /kit/media /kit/public/media; \
+	rm -f /kit/index.php /kit/.htaccess; \
+	mkdir -p /kit/storage/accounts /kit/storage/cache /kit/storage/sessions /kit/storage/logs; \
+	rm -rf /kit/site/accounts /kit/site/cache /kit/site/sessions
 
 
 # ---------------------------------------------------------------------------
@@ -90,25 +116,23 @@ COPY entrypoint.sh /usr/local/bin/kirby-entrypoint
 
 WORKDIR /app
 
-# Application skeleton first, Composer artifacts second: composer.json in the
-# builder carries the pinned Kirby requirement and must win.
+# Drop the base image's welcome page so nothing from it leaks into the app.
+RUN rm -rf /app
+
+# The whole tree as plainkit and Composer left it, then the two files this
+# image owns: the front controller that declares the roots, and the config
+# that bridges KIRBY_* environment variables into Kirby options.
+COPY --from=builder --chown=kirby:kirby /kit/ /app/
 COPY --chown=kirby:kirby app/ /app/
-COPY --from=builder --chown=kirby:kirby /app/composer.json /app/composer.lock /app/
-COPY --from=builder --chown=kirby:kirby /app/vendor/ /app/vendor/
-COPY --from=builder --chown=kirby:kirby /app/kirby/ /app/kirby/
 
 # `frankenphp validate` at the end turns a broken Caddyfile into a failed build
 # instead of a failed deployment.
 RUN set -eux; \
 	chmod +x /usr/local/bin/kirby-entrypoint; \
-	mkdir -p \
-		/app/content \
-		/app/public/media \
-		/app/site/plugins \
-		/app/storage/accounts \
-		/app/storage/cache \
-		/app/storage/sessions \
-		/app/storage/logs; \
+	mkdir -p /app/site/plugins; \
+	test -f /app/public/index.php; \
+	test -f /app/site/config/config.php; \
+	test -d /app/site/templates; \
 	frankenphp validate --config /etc/caddy/Caddyfile --adapter caddyfile; \
 	chown -R kirby:kirby /app /data/caddy /config/caddy
 

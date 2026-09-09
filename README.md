@@ -35,7 +35,7 @@ docker run -d --name kirby -p 8080:80 \
 
 ```
 /app
-├── composer.json      Kirby is pinned here at build time
+├── composer.json      from plainkit, with the CMS pinned at build time
 ├── kirby/             the CMS, installed by Composer
 ├── vendor/            Composer autoloader and plugin dependencies
 ├── content/           your pages                        (volume)
@@ -46,7 +46,11 @@ docker run -d --name kirby -p 8080:80 \
     └── media/         generated thumbnails               (volume)
 ```
 
-The image uses Kirby's [public/private folder setup](https://getkirby.com/docs/guide/configuration/custom-folder-setup): only `/app/public` is reachable over HTTP. `content`, `site`, `kirby`, `storage` and `composer.json` are not below the document root and therefore cannot be served at all, which is a stronger guarantee than blocking their paths in the web server.
+The site skeleton — templates, snippets, blueprints and the starting content — is Kirby's own [plainkit](https://github.com/getkirby/plainkit), installed with `composer create-project` during the build. Nothing about it is maintained in this repository, so it tracks whatever upstream ships. Exactly two files are this image's own: `public/index.php`, which declares the roots, and `site/config/config.php`, which bridges the `KIRBY_*` variables into Kirby options.
+
+plainkit is not released in lockstep with the CMS — its 4.x line stopped at 4.8.0 while Kirby 4 kept going — so the kit is resolved by major version and the exact CMS release is pinned right afterwards. The build fails if the installed version does not match the pin.
+
+The image uses Kirby's [public/private folder setup](https://getkirby.com/docs/guide/configuration/custom-folder-setup): only `/app/public` is reachable over HTTP. `content`, `site`, `kirby`, `storage` and `composer.json` are not below the document root and therefore cannot be served at all, which is a stronger guarantee than blocking their paths in the web server. plainkit ships the flat layout instead, so the build moves `media` under `public/`, drops plainkit's `index.php` and `.htaccess`, and collects the writable directories in `storage/`.
 
 The container runs as the unprivileged user `kirby` (uid/gid `1000:1000`).
 
@@ -251,7 +255,8 @@ volumes:
 
 ```
 versions.json           every image that gets built, as data
-image/                  build context (Dockerfile, Caddyfile, php.ini, app skeleton)
+image/                  build context (Dockerfile, Caddyfile, php.ini, entrypoint)
+  app/                  the only two application files this repo owns
 scripts/
   resolve-versions.py   versions.json + Packagist -> build matrix
   check-updates.py      finds new Kirby majors and PHP bumps
@@ -265,6 +270,7 @@ scripts/
 The design goal was that routine upkeep needs no commits.
 
 - **Kirby patch and minor releases** are resolved from Packagist on every build. The daily publish picks up a new `5.5.4` the day it appears, with no change here.
+- **The site skeleton** is installed from Kirby's plainkit during the build, so templates, blueprints and starting content are never something this repository has to keep in step with upstream.
 - **Security updates** in PHP, FrankenPHP and Debian arrive through the same daily rebuild, which runs with the layer cache disabled so updated packages are actually installed.
 - **New Kirby majors and PHP bumps** are detected weekly by `scripts/check-updates.py`, which opens a pull request. CI builds and smoke tests it; a human decides whether `latest` moves.
 - **GitHub Actions versions** are updated by Dependabot.
@@ -298,10 +304,13 @@ Locally:
 
 ```sh
 python3 scripts/resolve-versions.py
-docker buildx build --build-arg KIRBY_VERSION=5.5.3 -t kirby:dev --load ./image
+docker buildx build --build-arg KIRBY_VERSION=5.5.3 --build-arg PLAINKIT_CONSTRAINT='^5.0' \
+  -t kirby:dev --load ./image
 scripts/smoke-test.sh kirby:dev --kirby-version 5.5.3 --php-version 8.4
 ```
 
 ## License
 
 The contents of this repository are MIT licensed. Kirby itself is **not** free software: it is free to try, but a [license](https://getkirby.com/buy) is required to run it in public. The image ships Kirby under its own license terms.
+
+The published images also contain [plainkit](https://github.com/getkirby/plainkit), which carries no license file of its own and whose README points at the same Kirby license agreement. Redistributing it in an image is covered by a separate agreement with Kirby rather than by anything in this repository.

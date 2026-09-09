@@ -75,6 +75,7 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ matrix.base_image }}
             KIRBY_VERSION=${{ matrix.kirby_version }}
+            PLAINKIT_CONSTRAINT=${{ matrix.plainkit }}
             PHP_VERSION=${{ matrix.php }}
             FRANKENPHP_VERSION=${{ matrix.frankenphp }}
             VCS_REF=${{ github.sha }}
@@ -114,6 +115,7 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ matrix.base_image }}
             KIRBY_VERSION=${{ matrix.kirby_version }}
+            PLAINKIT_CONSTRAINT=${{ matrix.plainkit }}
             PHP_VERSION=${{ matrix.php }}
             FRANKENPHP_VERSION=${{ matrix.frankenphp }}
             VCS_REF=${{ github.sha }}

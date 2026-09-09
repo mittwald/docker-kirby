@@ -139,7 +139,20 @@ assert_contains "$(body_of /)" "<h1>Home</h1>" "home page is rendered by Kirby"
 # Kirby renders its own error page for unknown routes; a raw Caddy 404 would
 # not contain the content from content/error.
 assert_eq "404" "$(status_of /this-page-does-not-exist)" "unknown page is a 404"
-assert_contains "$(body_of /this-page-does-not-exist)" "could not be found" "404 is Kirby's error page, not Caddy's"
+assert_contains "$(body_of /this-page-does-not-exist)" "<h1>Error</h1>" "404 is Kirby's error page, not Caddy's"
+
+# The site skeleton is installed from Kirby's plainkit at build time rather
+# than maintained in this repository. If that ever silently stops happening,
+# the image would ship an empty site that still answers 200.
+group "phase 1: the skeleton came from plainkit"
+assert_eq "getkirby/plainkit" "$(docker exec "$CONTAINER" php -r 'echo json_decode(file_get_contents("/app/composer.json"))->name;')" "composer root package is plainkit"
+for path in /app/site/templates/default.php /app/site/blueprints/site.yml /app/site/blueprints/pages/default.yml /app/content/home /app/content/error; do
+	if docker exec "$CONTAINER" test -e "$path"; then
+		pass "plainkit provided ${path}"
+	else
+		fail "plainkit did not provide ${path}"
+	fi
+done
 
 group "phase 1: environment configuration reaches Kirby"
 # The panel redirects an anonymous visitor to its login/installation view, so

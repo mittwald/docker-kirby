@@ -94,10 +94,17 @@ def build_matrix(manifest: dict, available: list[tuple[int, int, int]]) -> list[
         os_variant = branch.get("os", defaults.get("os", "trixie"))
         platforms = branch.get("platforms", defaults.get("platforms", ["linux/amd64"]))
 
+        # The site skeleton comes from Kirby's plainkit, which is released on
+        # its own schedule — the 4.x line stopped at 4.8.0 while Kirby 4 kept
+        # going. Resolving it by major and pinning the CMS separately is what
+        # keeps the two from having to move together.
+        plainkit = branch.get("plainkit", f"^{version[0]}.0")
+
         entries.append(
             {
                 "branch": branch["name"],
                 "kirby_version": kirby_version,
+                "plainkit": plainkit,
                 "php": php,
                 "frankenphp": frankenphp,
                 "os": os_variant,
@@ -131,7 +138,10 @@ def main() -> int:
         print(json.dumps({"include": matrix}, indent=2))
     else:
         for entry in matrix:
-            print(f"branch {entry['branch']}: kirby {entry['kirby_version']} on php {entry['php']}")
+            print(
+                f"branch {entry['branch']}: kirby {entry['kirby_version']} on php {entry['php']}"
+                f", plainkit {entry['plainkit']}"
+            )
             for tag in entry["tags"]:
                 print(f"  -> {tag}")
 

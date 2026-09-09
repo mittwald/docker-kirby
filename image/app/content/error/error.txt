@@ -1,5 +1,0 @@
-Title: Error
-
-----
-
-Text: The page could not be found.

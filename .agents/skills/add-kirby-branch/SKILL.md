@@ -28,8 +28,28 @@ producing a broken image:
 - The constraint must match at least one stable release on Packagist.
 
 Optional per-branch keys, all falling back to `defaults`: `frankenphp`, `os`,
-`platforms`, and `phpPolicy` (`"pinned"` freezes the PHP version against the
-update automation).
+`platforms`, `phpPolicy` (`"pinned"` freezes the PHP version against the update
+automation), and `plainkit`.
+
+`plainkit` is the one to watch when adding a major. The site skeleton comes
+from `composer create-project getkirby/plainkit`, and the kit is **not**
+released in lockstep with the CMS — the 4.x line stopped at 4.8.0 while Kirby 4
+went on to 4.9.x. The default constraint is `^<major>.0`, derived from the
+resolved Kirby version, which is right whenever a matching kit exists.
+
+When Kirby ships a major before plainkit does, the build fails with
+`Could not find package getkirby/plainkit with version matching ^6.0`. Check
+what the kit actually has:
+
+```
+curl -s https://repo.packagist.org/p2/getkirby/plainkit.json \
+  | python3 -c "import sys,json;print([p['version'] for p in json.load(sys.stdin)['packages']['getkirby/plainkit']][:10])"
+```
+
+Then set `"plainkit": "^5.0"` on the new branch to use the previous kit until
+the matching one appears, and check the smoke test still passes — an older kit
+against a newer CMS is exactly the combination where a renamed template or
+blueprint field shows up.
 
 `os` has to stay a Debian variant — `bookworm` or `trixie`. The Dockerfile runs
 `apt-get upgrade` to pick up distribution security fixes, so an Alpine base
@@ -75,7 +95,9 @@ Before removing one, check that Kirby actually declared it end of life
 ```
 python3 scripts/resolve-versions.py                     # tags look right?
 python3 -m unittest discover -s scripts -p 'test_*.py'
-docker buildx build --build-arg KIRBY_VERSION=<version> -t kirby-new:<branch> --load ./image
+docker buildx build --build-arg KIRBY_VERSION=<version> \
+  --build-arg PLAINKIT_CONSTRAINT=<plainkit constraint> \
+  -t kirby-new:<branch> --load ./image
 scripts/smoke-test.sh kirby-new:<branch> --kirby-version <version> --php-version <php>
 ```
 
