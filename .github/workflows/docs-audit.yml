@@ -1,0 +1,43 @@
+name: docs audit
+
+# Quarterly check that the image still matches what Kirby's documentation says
+# an installation needs. This is the drift no script can detect: an extension
+# moving from recommended to required, a renamed root, a plainkit release that
+# adds a directory the build has to place. scripts/check-updates.py watches
+# version numbers; this watches meaning.
+
+on:
+  schedule:
+    - cron: "41 5 1 1,4,7,10 *"
+  workflow_dispatch:
+
+concurrency:
+  group: docs-audit
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: github.repository == 'mittwald/kirby-docker'
+    uses: ./.github/workflows/agent-task.yml
+    with:
+      task: kirby-docs-audit
+      branch-prefix: automation/docs-audit
+      prompt: |
+        Run the `kirby-docs-audit` skill against this repository and fix what
+        it finds.
+
+        Work through every check in the skill. Fetch the current upstream pages
+        rather than relying on what you already believe about Kirby, and check
+        the documentation for the oldest branch in `versions.json` as well as
+        the newest.
+
+        Most quarters this will find nothing, and that is the expected outcome:
+        say so and open no pull request. Only open one for drift you actually
+        confirmed against a documentation page or an upstream release, and cite
+        the URL in the pull request body.
+    secrets:
+      MITTWALD_AI_API_KEY: ${{ secrets.MITTWALD_AI_API_KEY }}
+      RELEASE_USER_TOKEN: ${{ secrets.RELEASE_USER_TOKEN }}

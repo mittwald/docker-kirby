@@ -45,5 +45,11 @@ jobs:
           docker run --rm -v "$PWD/image:/src" -w /src --entrypoint frankenphp dunglas/frankenphp:1 \
             fmt Caddyfile > /dev/null
 
-      - name: versions.json is valid
-        run: python3 scripts/resolve-versions.py
+      - name: versions.json is valid and canonically formatted
+        run: |
+          python3 scripts/resolve-versions.py
+          # Keeping the file in the formatting the automation emits means an
+          # automated bump shows only the line it changed.
+          python3 scripts/check-updates.py --reformat
+          git diff --exit-code versions.json \
+            || { echo "::error::versions.json is not canonically formatted; run: python3 scripts/check-updates.py --reformat"; exit 1; }

@@ -104,7 +104,14 @@ plainkit constraint for each branch.
 
 ## Output
 
-Open one pull request per finding, each with the doc URL that motivated it. If
-a finding needs a judgement call you cannot make from the docs alone — dropping
-an end-of-life branch, moving the `latest` tag — open an issue instead and say
-what the options are. Do not silently pick one.
+`.github/workflows/docs-audit.yml` runs this quarterly under opencode, so the
+usual caller is an unattended job rather than a person.
+
+Open a pull request for the drift you confirmed, citing the documentation URL
+that motivated each change in the body. Finding nothing is the expected result
+most quarters: say so, open no pull request, and stop.
+
+If a finding needs a judgement call the docs cannot settle — dropping an
+end-of-life branch, moving the `latest` tag — do not pick one. Leave the code
+alone and describe the options in the body of whatever pull request you are
+already opening, or in your final message if there is none.

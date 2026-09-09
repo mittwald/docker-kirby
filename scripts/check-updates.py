@@ -13,15 +13,17 @@ those from Packagist on every run, so they need no commit.
 
 The two findings are handled differently, on purpose. A PHP bump is applied and
 becomes a pull request the build matrix can verify end to end. A new major is
-only *reported*: it needs a plainkit release that may not exist yet, a decision
+not applied: it needs a plainkit release that may not exist yet, a decision
 about the `latest` tag, a decision about the branch it replaces and a README
-table that nothing generates, so it becomes a tracking issue that hands off to
-the add-kirby-branch skill rather than a PR that looks finished and is not.
+table that nothing generates. Instead this writes a briefing that
+.github/workflows/update-versions.yml hands to the add-kirby-branch skill,
+running under opencode, which does the work and opens the pull request.
 
 Usage:
     scripts/check-updates.py                     # report only
     scripts/check-updates.py --apply             # apply the PHP bumps
-    scripts/check-updates.py --apply --handoffs-to issues.json --github-output
+    scripts/check-updates.py --apply --briefing-to brief.md --github-output
+    scripts/check-updates.py --reformat          # canonicalise versions.json
 """
 
 from __future__ import annotations
@@ -197,13 +199,13 @@ def check(manifest: dict, releases: dict) -> dict:
 
         findings.append(
             f"- **New major**: Kirby {major} ({release}) is not built yet. "
-            f"Left for the `add-kirby-branch` skill — see the tracking issue."
+            f"Handed to the `add-kirby-branch` skill."
         )
         handoffs.append(
             {
                 "major": major,
-                "title": f"Kirby {major} is released and not built yet",
-                "body": new_major_issue(
+                "title": f"Add Kirby {major}",
+                "body": new_major_briefing(
                     major, release, php, kit_available, current_latest, frankenphp, os_variant
                 ),
             }
@@ -212,7 +214,7 @@ def check(manifest: dict, releases: dict) -> dict:
     return {"findings": findings, "handoffs": handoffs, "changed": changed}
 
 
-def new_major_issue(
+def new_major_briefing(
     major: int,
     release: str,
     php: str | None,
@@ -221,7 +223,8 @@ def new_major_issue(
     frankenphp: str,
     os_variant: str,
 ) -> str:
-    """The tracking issue body: the facts, then the decisions, then the skill."""
+    """Context handed to the agent: the facts it would otherwise go and gather,
+    then the decisions that are actually open."""
     php_line = (
         f"- Highest PHP supported by both Kirby {major} and FrankenPHP: **{php}** "
         f"(`dunglas/frankenphp:{frankenphp}-php{php}-{os_variant}`)."
@@ -240,33 +243,35 @@ def new_major_issue(
     )
 
     return f"""\
+## Add Kirby {major}
+
 Kirby **{major}.x** is on Packagist (newest stable: `{release}`) and no branch in
 `versions.json` builds it.
 
-This was detected by `.github/workflows/update-versions.yml`, which deliberately
-did **not** open a pull request for it. Adding a major is not a version-string
-change: it needs the decisions listed below, and a `versions.json` edit alone
-would produce a PR that looks finished while leaving the `latest` tag, the
-end-of-life question and the README table untouched.
-
-## What the automation already checked
+### Already checked for you, no need to re-derive
 
 {php_line}
 {kit_line}
 - The `latest` tag currently points at branch `{current_latest or "(none)"}`.
 
-## What needs deciding
+### The task
 
-- [ ] Add the branch to `versions.json` (with an explicit `plainkit` constraint if the check above says so).
-- [ ] Decide whether `latest` moves to Kirby {major}, and when. Moving it changes what every unpinned `docker pull` gets.
-- [ ] Decide whether the oldest branch is now end of life and should stop being built.
-- [ ] Update the supported-tags table in `README.md`; nothing generates it.
+Add a branch for Kirby {major} to `versions.json` on PHP `{php}`, following the
+`add-kirby-branch` skill, and update the supported-tags table in `README.md` to
+match — nothing generates that table.
 
-## How
+### Deliberately out of scope for this run
 
-Run the `add-kirby-branch` skill (`.agents/skills/add-kirby-branch/SKILL.md`).
-It covers each of the above, including the plainkit lag and the local build and
-smoke test to run before opening the PR.
+- **Do not move the `latest` tag.** It stays on branch
+  `{current_latest or "(none)"}`. Moving it changes what every unpinned
+  `docker pull mittwald/kirby` resolves to, and the skill's rule is to move it
+  only once the new major has had at least one patch release, in a pull request
+  of its own. Note in the PR body that this is still open.
+- **Do not retire the oldest branch.** Dropping an end-of-life branch is a
+  separate, deliberate change. Mention it in the PR body if Kirby has declared
+  one end of life, but leave `versions.json` alone.
+- **Do not change the PHP version of any existing branch.** A separate
+  automated pull request handles those.
 """
 
 
@@ -279,14 +284,27 @@ def main() -> int:
         help="write the changes this script may finish on its own (PHP bumps)",
     )
     parser.add_argument(
-        "--handoffs-to",
+        "--briefing-to",
         type=Path,
-        help="write the new-major tracking issues to this file as JSON",
+        help="write the new-major agent briefing to this file as markdown",
+    )
+    parser.add_argument(
+        "--reformat",
+        action="store_true",
+        help="rewrite versions.json in the canonical formatting and exit",
     )
     parser.add_argument("--github-output", action="store_true")
     args = parser.parse_args()
 
     manifest = json.loads(args.manifest.read_text())
+
+    # Keeping the file in exactly the formatting this script emits means an
+    # automated bump shows only the line it changed. The lint job runs this and
+    # then checks the working tree is clean.
+    if args.reformat:
+        args.manifest.write_text(json.dumps(manifest, indent=2) + "\n")
+        return 0
+
     result = check(manifest, fetch_releases())
     findings, handoffs, changed = result["findings"], result["handoffs"], result["changed"]
 
@@ -307,8 +325,8 @@ def main() -> int:
         args.manifest.write_text(json.dumps(manifest, indent=2) + "\n")
         print(f"\nwrote {args.manifest}", file=sys.stderr)
 
-    if args.handoffs_to:
-        args.handoffs_to.write_text(json.dumps(handoffs, indent=2) + "\n")
+    if args.briefing_to:
+        args.briefing_to.write_text("\n".join(h["body"] for h in handoffs))
 
     if args.github_output and (output := os.environ.get("GITHUB_OUTPUT")):
         with open(output, "a", encoding="utf-8") as handle:

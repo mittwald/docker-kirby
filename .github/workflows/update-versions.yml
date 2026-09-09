@@ -7,11 +7,11 @@ name: update versions
 #     string. It is applied and becomes a pull request that CI builds and smoke
 #     tests end to end, so it can be reviewed and merged as it stands.
 #
-#   - A new Kirby major cannot be finished here. It needs a plainkit release
-#     that may not exist yet, a decision about the `latest` tag, a decision
-#     about the branch it replaces, and a README table that nothing generates.
-#     So it becomes a tracking issue that hands off to the add-kirby-branch
-#     skill, carrying the facts that skill would otherwise have to gather.
+#   - A new Kirby major needs a reader: a plainkit release that may not exist
+#     yet, a decision about the `latest` tag, a decision about the branch it
+#     replaces, and a README table that nothing generates. So it is handed to
+#     the add-kirby-branch skill running under opencode, which does the work,
+#     builds and smoke tests it, and opens the pull request itself.
 #
 # New Kirby *patch* releases need no run of this workflow — the daily publish
 # resolves those from Packagist by itself.
@@ -28,22 +28,20 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
-  issues: write
 
 jobs:
   propose:
     name: propose versions.json updates
     runs-on: ubuntu-latest
+    if: github.repository == 'mittwald/kirby-docker'
+    outputs:
+      handoffs: ${{ steps.check.outputs.handoffs }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Check Kirby and FrankenPHP for changes
         id: check
-        run: |
-          python3 scripts/check-updates.py \
-            --apply \
-            --handoffs-to "${RUNNER_TEMP}/handoffs.json" \
-            --github-output
+        run: python3 scripts/check-updates.py --apply --github-output
 
       - name: Report
         env:
@@ -75,25 +73,26 @@ jobs:
             To freeze a branch's PHP version against this automation, add
             `"phpPolicy": "pinned"` to it.
 
-      # Not mechanical: handed to the add-kirby-branch skill as an issue rather
-      # than guessed at in a pull request. One issue per major, reopened never
-      # and duplicated never — an existing open issue with the same title is
-      # left alone.
-      - name: Open tracking issues for new Kirby majors
-        if: steps.check.outputs.handoffs == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HANDOFFS: ${{ runner.temp }}/handoffs.json
-        run: |
-          count="$(jq 'length' "$HANDOFFS")"
-          for index in $(seq 0 $((count - 1))); do
-            title="$(jq -r ".[${index}].title" "$HANDOFFS")"
-            if gh issue list --state open --search "$title in:title" --json title \
-                 --jq '.[].title' | grep -qxF "$title"; then
-              echo "already tracked: ${title}"
-              continue
-            fi
-            jq -r ".[${index}].body" "$HANDOFFS" > "${RUNNER_TEMP}/body.md"
-            gh issue create --title "$title" --body-file "${RUNNER_TEMP}/body.md" \
-              --label automation
-          done
+  # Not mechanical, so it is handed to the skill that knows how to do it. The
+  # agent gets the facts this job already established as its briefing, adds the
+  # branch, builds it, runs the smoke test and opens the pull request.
+  add-branch:
+    name: add the new Kirby major
+    needs: propose
+    if: needs.propose.outputs.handoffs == 'true'
+    uses: ./.github/workflows/agent-task.yml
+    with:
+      task: add-kirby-branch
+      branch-prefix: automation/add-kirby-branch
+      briefing-command: python3 scripts/check-updates.py --briefing-to "$BRIEFING"
+      prompt: |
+        A new Kirby major has been released that this repository does not build
+        yet. Run the `add-kirby-branch` skill to add it, and follow that skill's
+        rules — in particular the one about plainkit lagging the CMS, and its
+        verification steps.
+
+        Build and smoke test every branch in `versions.json`, not only the one
+        you added: the point of the change is that all of them still work.
+    secrets:
+      MITTWALD_AI_API_KEY: ${{ secrets.MITTWALD_AI_API_KEY }}
+      RELEASE_USER_TOKEN: ${{ secrets.RELEASE_USER_TOKEN }}

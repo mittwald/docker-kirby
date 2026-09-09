@@ -1,0 +1,154 @@
+name: agent task
+
+# Runs one of the skills in .agents/skills under opencode, unattended, on a
+# branch of its own. Some of this repository's upkeep needs a reader rather
+# than a script — whether a Kirby doc changed what an installation requires,
+# whether a new major is safe to add given the state of plainkit — and this is
+# how that work gets done without a human starting it.
+#
+# Callers supply the task-specific half of the prompt. The rules that are the
+# same for every unattended run (never ask questions, what to do when there is
+# nothing to do, how to branch, push and open the PR) live here once.
+
+on:
+  workflow_call:
+    inputs:
+      task:
+        description: Short human-readable name of the task, used in logs.
+        type: string
+        required: true
+      branch-prefix:
+        description: Working branch name; the date is appended.
+        type: string
+        required: true
+      prompt:
+        description: The task-specific instructions handed to the agent.
+        type: string
+        required: true
+      briefing-command:
+        description: Optional shell command run before the agent, to write
+          additional context to $BRIEFING.
+        type: string
+        default: ""
+    secrets:
+      MITTWALD_AI_API_KEY:
+        required: true
+      RELEASE_USER_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  agent:
+    name: ${{ inputs.task }}
+    runs-on: ubuntu-latest
+    steps:
+      # The PAT rather than GITHUB_TOKEN: pushes made with GITHUB_TOKEN do not
+      # trigger workflows, and a pull request whose CI never runs is worse than
+      # no pull request.
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.RELEASE_USER_TOKEN }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install opencode
+        run: npm install -g opencode-ai
+
+      - name: Configure git identity
+        run: |
+          git config user.name "mittwald-machine[bot]"
+          git config user.email "opensource@mittwald.de"
+
+      - name: Create working branch
+        run: git checkout -B "${{ inputs.branch-prefix }}-$(date +%Y-%m-%d)"
+
+      - name: Gather briefing
+        env:
+          BRIEFING: ${{ runner.temp }}/briefing.md
+          BRIEFING_COMMAND: ${{ inputs.briefing-command }}
+        run: |
+          : > "$BRIEFING"
+          if [ -n "$BRIEFING_COMMAND" ]; then
+            sh -c "$BRIEFING_COMMAND"
+          fi
+          echo "--- briefing ---"
+          cat "$BRIEFING"
+
+      - name: Run ${{ inputs.task }}
+        env:
+          MITTWALD_AI_API_KEY: ${{ secrets.MITTWALD_AI_API_KEY }}
+          GH_TOKEN: ${{ secrets.RELEASE_USER_TOKEN }}
+          BRIEFING: ${{ runner.temp }}/briefing.md
+          TASK_PROMPT: ${{ inputs.prompt }}
+        run: |
+          PREAMBLE=$(cat <<'PREAMBLE_EOF'
+          You are running unattended in a GitHub Actions job against the
+          mittwald/kirby-docker repository, which builds Kirby CMS container
+          images. Read README.md for what the repository is and how it is put
+          together.
+
+          This is a non-interactive run: never stop to ask a clarifying
+          question, and never wait for input. If something is genuinely
+          ambiguous or you are not confident enough to act on it, leave it
+          unchanged and say so clearly in the pull request body rather than
+          guessing.
+
+          Verification is not optional. This repository can build and test
+          itself, and Docker is available on this runner:
+
+            python3 scripts/resolve-versions.py
+            python3 -m unittest discover -s scripts -p 'test_*.py'
+            docker buildx build --build-arg KIRBY_VERSION=<version> \
+              --build-arg PLAINKIT_CONSTRAINT=<constraint> \
+              -t kirby-agent:<branch> --load ./image
+            scripts/smoke-test.sh kirby-agent:<branch> \
+              --kirby-version <version> --php-version <php>
+
+          Any change you make to versions.json or the image must be verified by
+          an actual build and a passing smoke test before you open a pull
+          request. If the smoke test fails, fix the image rather than the
+          assertion, and only relax an assertion when you can point at a
+          deliberate upstream change. If you cannot get it green, open no pull
+          request and explain what failed.
+
+          Keep versions.json in its canonical formatting by running
+          "python3 scripts/check-updates.py --reformat" after editing it.
+
+          You are already on a dedicated branch, checked out from an
+          up-to-date main and created for exactly this run.
+
+          If, and only if, you actually changed something: commit it with a
+          message describing what changed and why, push with
+          "git push -u origin HEAD --force" (force is safe, this branch belongs
+          to this workflow alone), and open a pull request against main with
+          the "gh" CLI, which is already authenticated. Write a title and body
+          that accurately describe what changed, what you verified and how, and
+          anything you deliberately left alone. Never target a base other than
+          main.
+
+          If there is nothing to change, do not commit, push or open a pull
+          request. Say so and stop. A clean run producing no pull request is a
+          successful run.
+
+          Your task follows.
+          PREAMBLE_EOF
+          )
+
+          BRIEFING_TEXT=""
+          if [ -s "$BRIEFING" ]; then
+            BRIEFING_TEXT="
+
+          The following context was gathered for you before this run started;
+          treat it as already verified and do not re-derive it:
+
+          $(cat "$BRIEFING")"
+          fi
+
+          opencode run --print-logs --thinking --auto "${PREAMBLE}
+
+          ${TASK_PROMPT}${BRIEFING_TEXT}"
