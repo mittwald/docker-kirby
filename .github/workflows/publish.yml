@@ -1,0 +1,54 @@
+name: publish
+
+on:
+  push:
+    branches: [main]
+  # Daily rebuild. Two things depend on it: security updates in the base image
+  # and the distribution, and new Kirby patch releases, which the resolver
+  # picks up from Packagist without any commit.
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      no-cache:
+        description: Rebuild every layer from scratch.
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  publish:
+    needs: lint
+    uses: ./.github/workflows/build.yml
+    with:
+      push: true
+      # The scheduled run exists to pick up patched packages, which a warm
+      # layer cache would hide.
+      no-cache: ${{ github.event_name == 'schedule' || inputs.no-cache == true }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  description:
+    name: sync Docker Hub description
+    needs: publish
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: mittwald/kirby
+          readme-filepath: ./README.md
+          short-description: Kirby CMS on FrankenPHP, built daily for Kirby 4 and 5

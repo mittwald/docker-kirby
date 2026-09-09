@@ -1,0 +1,143 @@
+name: build
+
+# Reusable build pipeline. Everything that varies between images comes from
+# versions.json via scripts/resolve-versions.py, so neither this workflow nor
+# the Dockerfile has to change when a Kirby branch is added.
+
+on:
+  workflow_call:
+    inputs:
+      push:
+        description: Push the resulting images to Docker Hub.
+        type: boolean
+        default: false
+      no-cache:
+        description: Ignore the layer cache. Used by the scheduled rebuild so
+          that distribution security updates are actually picked up.
+        type: boolean
+        default: false
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: resolve build matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve versions.json against Packagist
+        id: resolve
+        run: |
+          {
+            echo '### Build matrix'
+            echo '```'
+            python3 scripts/resolve-versions.py --github-output
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: kirby ${{ matrix.branch }}
+    needs: resolve
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build metadata
+        id: meta
+        run: echo "date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+      # Single-architecture build that can be loaded into the local daemon, so
+      # the smoke test runs against the exact image that is about to be pushed.
+      - name: Build for testing
+        uses: docker/build-push-action@v6
+        with:
+          context: ./image
+          file: ./image/Dockerfile
+          platforms: linux/amd64
+          load: true
+          no-cache: ${{ inputs.no-cache }}
+          tags: kirby-ci:${{ matrix.branch }}
+          build-args: |
+            BASE_IMAGE=${{ matrix.base_image }}
+            KIRBY_VERSION=${{ matrix.kirby_version }}
+            PHP_VERSION=${{ matrix.php }}
+            FRANKENPHP_VERSION=${{ matrix.frankenphp }}
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.date }}
+          cache-from: type=gha,scope=kirby-${{ matrix.branch }}
+          cache-to: type=gha,mode=max,scope=kirby-${{ matrix.branch }}
+
+      - name: Smoke test
+        env:
+          BRANCH: ${{ matrix.branch }}
+          KIRBY_VERSION: ${{ matrix.kirby_version }}
+          PHP_VERSION: ${{ matrix.php }}
+        run: |
+          ./scripts/smoke-test.sh "kirby-ci:${BRANCH}" \
+            --kirby-version "${KIRBY_VERSION}" \
+            --php-version "${PHP_VERSION}"
+
+      - name: Log in to Docker Hub
+        if: inputs.push
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Reuses the layers the test build just produced, so only the additional
+      # architectures are actually compiled here.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./image
+          file: ./image/Dockerfile
+          platforms: ${{ matrix.platforms }}
+          push: ${{ inputs.push }}
+          provenance: mode=max
+          sbom: true
+          tags: ${{ join(matrix.tags, ',') }}
+          build-args: |
+            BASE_IMAGE=${{ matrix.base_image }}
+            KIRBY_VERSION=${{ matrix.kirby_version }}
+            PHP_VERSION=${{ matrix.php }}
+            FRANKENPHP_VERSION=${{ matrix.frankenphp }}
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.date }}
+          cache-from: type=gha,scope=kirby-${{ matrix.branch }}
+
+      # Matrix values go through the environment rather than into the script
+      # body, so nothing in versions.json can end up being executed.
+      - name: Summary
+        env:
+          BRANCH: ${{ matrix.branch }}
+          KIRBY_VERSION: ${{ matrix.kirby_version }}
+          PHP_VERSION: ${{ matrix.php }}
+          BASE_IMAGE: ${{ matrix.base_image }}
+          PLATFORMS: ${{ matrix.platforms }}
+          PUSHED: ${{ inputs.push }}
+          TAGS: ${{ join(matrix.tags, ' ') }}
+        run: |
+          {
+            echo "### kirby ${BRANCH}"
+            echo
+            echo "- Kirby \`${KIRBY_VERSION}\` on PHP \`${PHP_VERSION}\` (\`${BASE_IMAGE}\`)"
+            echo "- Platforms: \`${PLATFORMS}\`"
+            echo "- Pushed: \`${PUSHED}\`"
+            echo "- Tags:"
+            for tag in ${TAGS}; do echo "  - \`${tag}\`"; done
+          } >> "$GITHUB_STEP_SUMMARY"

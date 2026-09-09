@@ -1,0 +1,66 @@
+name: update versions
+
+# Watches for the two upstream changes that a build cannot pick up on its own:
+# a new Kirby major, and a newer PHP minor supported by both Kirby and
+# FrankenPHP. Anything it finds becomes a pull request, which the normal CI
+# pipeline then builds and smoke tests before a human merges it.
+#
+# New Kirby *patch* releases need no run of this workflow — the daily publish
+# resolves those from Packagist by itself.
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: update-versions
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  propose:
+    name: propose versions.json updates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Kirby and FrankenPHP for changes
+        id: check
+        run: python3 scripts/check-updates.py --apply --github-output
+
+      - name: Report
+        env:
+          REPORT: ${{ steps.check.outputs.report }}
+        run: printf '%s\n' "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open pull request
+        if: steps.check.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automation/versions-update
+          base: main
+          title: "chore: update versions.json"
+          commit-message: "chore: update versions.json"
+          delete-branch: true
+          labels: automation
+          body: |
+            ${{ steps.check.outputs.report }}
+
+            ---
+
+            Opened by `.github/workflows/update-versions.yml`. CI builds and
+            smoke tests every branch in `versions.json`, so a green run here
+            means the proposed combination actually boots and serves Kirby.
+
+            Things this automation deliberately does **not** decide for you:
+
+            - Which branch carries the `latest` tag. Set `"latest": true` on
+              the branch you want it on, and remove it from the old one.
+            - When to drop an end-of-life branch. Deleting the entry stops the
+              builds; tags already on Docker Hub stay where they are.
+            - Whether a PHP bump is wanted at all. Add
+              `"phpPolicy": "pinned"` to a branch to freeze its PHP version.

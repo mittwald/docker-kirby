@@ -1,0 +1,49 @@
+name: lint
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: image/Dockerfile
+          failure-threshold: warning
+
+      - name: Shell scripts
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
+          shellcheck --severity=warning scripts/*.sh image/entrypoint.sh
+
+      - name: Workflows
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
+      - name: Python
+        run: |
+          python3 -m compileall -q scripts
+          python3 -m unittest discover -s scripts -p 'test_*.py' -v
+
+      - name: PHP syntax
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src --entrypoint sh dunglas/frankenphp:1 -c \
+            'find image -name "*.php" -print0 | xargs -0 -n1 php -l'
+
+      - name: Caddyfile formatting
+        run: |
+          docker run --rm -v "$PWD/image:/src" -w /src --entrypoint frankenphp dunglas/frankenphp:1 \
+            fmt Caddyfile > /dev/null
+
+      - name: versions.json is valid
+        run: python3 scripts/resolve-versions.py

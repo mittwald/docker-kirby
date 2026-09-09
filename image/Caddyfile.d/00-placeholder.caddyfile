@@ -1,0 +1,5 @@
+# Drop additional Caddy site blocks into /etc/caddy/Caddyfile.d/*.caddyfile.
+#
+# This placeholder only exists so the `import` glob in the main Caddyfile
+# always matches at least one file. Deleting it is fine as long as you add a
+# snippet of your own.

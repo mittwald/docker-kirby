@@ -1,0 +1,22 @@
+{
+  "$comment": "Single source of truth for every image that gets built. See docs/adding-a-version.md before editing by hand.",
+  "image": "mittwald/kirby",
+  "defaults": {
+    "frankenphp": "1",
+    "os": "trixie",
+    "platforms": ["linux/amd64", "linux/arm64"]
+  },
+  "branches": [
+    {
+      "name": "5",
+      "constraint": "^5.0",
+      "php": "8.4",
+      "latest": true
+    },
+    {
+      "name": "4",
+      "constraint": "^4.0",
+      "php": "8.4"
+    }
+  ]
+}

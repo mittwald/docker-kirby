@@ -1,0 +1,100 @@
+# Caddyfile for the mittwald/kirby images.
+#
+# Derived from the FrankenPHP default Caddyfile and Kirby's own Caddy recipe:
+# https://getkirby.com/docs/cookbook/development-deployment/caddy
+#
+# Everything that is worth changing at runtime is an environment variable with
+# a working default, so `docker run mittwald/kirby:5` needs no configuration at
+# all. See the README for the full list.
+#
+{
+	# The image never terminates TLS for a domain it does not know about, and
+	# installing a local CA into the container trust store is pointless.
+	skip_install_trust
+
+	# Serving on a bare port (the default) means no automatic HTTPS. As soon as
+	# SERVER_NAME is set to a hostname, Caddy provisions a certificate for it.
+	# Behind a TLS-terminating proxy, turn that off with
+	# CADDY_GLOBAL_OPTIONS="auto_https off".
+	admin {$CADDY_ADMIN:off}
+
+	servers {
+		# Required for correct client IPs and https detection when the image
+		# runs behind an ingress controller or load balancer.
+		trusted_proxies static {$TRUSTED_PROXIES:private_ranges}
+	}
+
+	frankenphp {
+		# Kirby is a classic request/response application and is *not* safe to
+		# run in worker mode out of the box. Opt in deliberately, for example:
+		#   FRANKENPHP_CONFIG="worker /app/public/index.php"
+		{$FRANKENPHP_CONFIG}
+
+		# Values are quoted because Caddy splits unquoted arguments on spaces,
+		# which an ini value like "E_ALL & ~E_DEPRECATED" would trip over.
+		php_ini {
+			memory_limit "{$PHP_MEMORY_LIMIT:256M}"
+			upload_max_filesize "{$PHP_UPLOAD_MAX_FILESIZE:128M}"
+			post_max_size "{$PHP_POST_MAX_SIZE:128M}"
+			max_execution_time "{$PHP_MAX_EXECUTION_TIME:60}"
+			max_input_vars "{$PHP_MAX_INPUT_VARS:3000}"
+			max_file_uploads "{$PHP_MAX_FILE_UPLOADS:50}"
+			date.timezone "{$PHP_TIMEZONE:UTC}"
+			display_errors "{$PHP_DISPLAY_ERRORS:Off}"
+			error_reporting "{$PHP_ERROR_REPORTING:E_ALL & ~E_DEPRECATED}"
+			opcache.memory_consumption "{$PHP_OPCACHE_MEMORY_CONSUMPTION:192}"
+			# The application code is baked into the image, so revalidating
+			# timestamps is wasted work. Set to 1 when bind-mounting sources.
+			opcache.validate_timestamps "{$PHP_OPCACHE_VALIDATE_TIMESTAMPS:0}"
+		}
+	}
+
+	{$CADDY_GLOBAL_OPTIONS}
+}
+
+{$CADDY_EXTRA_CONFIG}
+
+{$SERVER_NAME::80} {
+	root {$SERVER_ROOT:/app/public}
+	encode zstd br gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	{$CADDY_SERVER_EXTRA_DIRECTIVES}
+
+	# `route` keeps these in the order written instead of Caddy's global
+	# directive order, which is what makes the dotfile block reliably win over
+	# the PHP handler.
+	route {
+		# Kirby stores nothing web-accessible in dotfiles, but plugins and
+		# deployment tooling do (.git, .env, .DS_Store). RE2 has no lookahead,
+		# hence the separate `not path` condition for ACME and security.txt.
+		@dotfiles {
+			path_regexp \/\.
+			not path /.well-known/*
+		}
+		error @dotfiles 404
+
+		# php_server = try_files + php + file_server. Requests for files that
+		# do not exist — pages, the panel, and on-demand thumbnails below
+		# /media — end up in Kirby's front controller.
+		php_server
+	}
+}
+
+# Dedicated plain-HTTP listener for container/orchestrator health probes. It is
+# deliberately separate from the main site so that a probe never has to deal
+# with automatic HTTPS redirects, virtual hosts or PHP, and so that a page
+# called "healthz" stays possible.
+:{$HEALTH_PORT:8090} {
+	respond {$HEALTH_PATH:/healthz} "OK" 200
+	respond 404
+}
+
+# Drop-in directory for additional site blocks in derived images.
+import /etc/caddy/Caddyfile.d/*.caddyfile

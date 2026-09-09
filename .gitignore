@@ -1,0 +1,9 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# Produced by a local `composer install` inside the build context; the image
+# always installs these itself.
+image/app/vendor/
+image/app/kirby/
+image/app/composer.lock

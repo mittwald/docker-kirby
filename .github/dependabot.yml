@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # The pinned action versions are the only dependency in this repo that no
+  # other automation keeps current. Kirby comes from Packagist at build time,
+  # the base image from versions.json via update-versions.yml.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [automation]
+    groups:
+      actions:
+        patterns: ["*"]
