@@ -1,6 +1,11 @@
 # Caddyfile for the mittwald/kirby images.
 #
-# Derived from the FrankenPHP default Caddyfile and Kirby's own Caddy recipe:
+# The skeleton — the global block, the CADDY_*/SERVER_* variable names and the
+# Caddyfile.d import — is adapted from FrankenPHP's own default Caddyfile
+# (caddy/frankenphp/Caddyfile in php/frankenphp, MIT licensed), so that the
+# environment variables documented upstream keep working here. The Kirby
+# specific parts follow Kirby's Caddy recipe:
+# https://github.com/php/frankenphp
 # https://getkirby.com/docs/cookbook/development-deployment/caddy
 #
 # Everything that is worth changing at runtime is an environment variable with
