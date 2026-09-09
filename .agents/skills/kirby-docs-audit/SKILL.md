@@ -1,6 +1,6 @@
 ---
 name: kirby-docs-audit
-description: Audit the container image against Kirby's current upstream documentation — system requirements, writable roots, folder setup and the Caddy recipe — and open an issue or PR for anything that has drifted. Run this quarterly, after a new Kirby major, or whenever a build starts behaving oddly for reasons the smoke test does not explain.
+description: Audit the container image against Kirby's current upstream documentation — system requirements, writable roots, folder setup and the Caddy recipe — and fix anything that has drifted. Use this periodically, after a new Kirby major, or whenever a build starts behaving oddly for reasons the smoke test does not explain.
 ---
 
 # Kirby docs audit
@@ -104,12 +104,9 @@ plainkit constraint for each branch.
 
 ## Output
 
-`.github/workflows/docs-audit.yml` runs this quarterly under opencode, so the
-usual caller is an unattended job rather than a person.
-
 Open a pull request for the drift you confirmed, citing the documentation URL
 that motivated each change in the body. Finding nothing is the expected result
-most quarters: say so, open no pull request, and stop.
+most of the time: say so, open no pull request, and stop.
 
 If a finding needs a judgement call the docs cannot settle — dropping an
 end-of-life branch, moving the `latest` tag — do not pick one. Leave the code

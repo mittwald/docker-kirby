@@ -66,16 +66,20 @@ gh run list --workflow update-versions.yml --limit 5
 ```
 
 A publish run that is red for the same matrix entry several days running is
-worth an issue even if the tags on Docker Hub still look fine — it means the
+worth reporting even if the tags on Docker Hub still look fine — it means the
 image has stopped receiving security updates while continuing to exist.
 
 ## Output
 
-Report only what is actually wrong, with the command output that shows it.
-If everything is healthy, say so in one line and stop — do not open an issue,
-and do not re-run the publish workflow to "refresh" a healthy tag.
+Report only what is actually wrong, with the command output that shows it. If
+everything is healthy, say so in one line and stop — and do not re-run the
+publish workflow to "refresh" a healthy tag.
 
-For a real failure, open an issue naming the affected tags, the last known good
-build date, and the likely cause. Re-running the publish workflow
+For a real failure, state which tags are affected, the last known good build
+date, and the likely cause. Re-running the publish workflow
 (`gh workflow run publish.yml`) is the right first remedy for a transient
-failure; a repeated failure needs the underlying cause fixed instead.
+failure. A repeated failure needs the underlying cause fixed: if that cause is
+in this repository, fix it and open a pull request, verified the same way any
+other change to the image is. If it is not — an expired registry credential, a
+disabled schedule, an upstream outage — say so plainly and name what a human
+has to do, rather than working around it.

@@ -283,6 +283,8 @@ The split is the point. A version string is applied by a script and verified by 
 
 `.github/workflows/agent-task.yml` is the shared runner for the agent tasks. It owns the rules that are the same every time — never ask questions, verify with a real build, what to do when there is nothing to do — so adding another periodic skill is a caller of about fifteen lines.
 
+The skills themselves know nothing about the workflows that call them. A skill describes its task and how to verify it, nothing more; run-specific context is the caller's business, and anything a run needs to know belongs in the runner's preamble or the caller's prompt. That is what keeps the same skill usable by hand — `/add-kirby-branch` in an interactive session, with no workflow anywhere in sight — and it is worth preserving when adding new ones.
+
 Every build runs `scripts/smoke-test.sh` against the loaded image before anything is pushed. It starts real containers and checks that Kirby renders, that environment variables reach the CMS, that `content`, `site` and `kirby` are not web-reachable, that volumes survive a container replacement, and that the root-to-`kirby` privilege drop works.
 
 ### Repository setup
