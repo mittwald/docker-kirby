@@ -202,11 +202,15 @@ if [ -n "$EXPECTED_PHP" ]; then
 	assert_eq "$EXPECTED_PHP" "$(docker exec "$CONTAINER" php -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;')" "PHP version"
 fi
 
+MODULES="$(docker exec "$CONTAINER" php -m)"
 for extension in gd intl exif zip apcu Zend\ OPcache; do
-	if docker exec "$CONTAINER" php -m | grep -qxF "$extension"; then
+	if printf '%s' "$MODULES" | grep -qxF "$extension"; then
 		pass "PHP extension ${extension} is present"
 	else
-		fail "PHP extension ${extension} is missing"
+		# Dumping the module list costs nothing here and saves a round trip:
+		# an extension can be missing on one architecture only, which is not
+		# something the assertion text alone would ever reveal.
+		fail "PHP extension ${extension} is missing; php -m reported: $(printf '%s' "$MODULES" | tr '\n' ' ')"
 	fi
 done
 

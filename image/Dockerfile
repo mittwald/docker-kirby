@@ -34,11 +34,19 @@ RUN apt-get update \
 # Kirby additionally requires (gd) or recommends (exif, intl), plus zip for
 # Composer-installed plugins and apcu for Kirby's apcu cache driver.
 # https://getkirby.com/docs/reference/system/requirements
+#
+# opcache is listed even though the base image usually already has it: FrankenPHP
+# does not enable it itself, it comes from the upstream PHP image, and it turned
+# out to be present on arm64 but not on amd64 for the same image tag. This image
+# configures opcache in php/kirby.ini and documents it as enabled, so it asks for
+# it explicitly instead of inheriting it by luck. Installing an extension that is
+# already there is a no-op.
 RUN install-php-extensions \
 	apcu \
 	exif \
 	gd \
 	intl \
+	opcache \
 	zip
 
 
