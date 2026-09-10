@@ -92,6 +92,7 @@ the newest — `v4.getkirby.com` mirrors the Kirby 4 documentation.
 Never hand back an untested edit. For each branch in `versions.json`:
 
 ```
+scripts/lint.sh
 docker buildx build \
   --build-arg KIRBY_VERSION=<resolved version> \
   --build-arg PLAINKIT_CONSTRAINT=<plainkit constraint> \

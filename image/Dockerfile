@@ -15,6 +15,10 @@ ARG BASE_IMAGE=dunglas/frankenphp:${FRANKENPHP_VERSION}-php${PHP_VERSION}-${OS_V
 # Shared base: the PHP runtime Kirby needs. Both the Composer stage and the
 # final image derive from it so the extensions are compiled exactly once.
 # ---------------------------------------------------------------------------
+# The base image is tagged — BASE_IMAGE above resolves to a pinned
+# dunglas/frankenphp tag, and the build matrix overrides it with an explicit
+# one. hadolint before 2.13 cannot follow the ARG and reports it as untagged.
+# hadolint ignore=DL3006
 FROM ${BASE_IMAGE} AS php-base
 
 # Picks up distribution security fixes on the scheduled rebuilds even when the
@@ -175,7 +179,7 @@ LABEL org.opencontainers.image.title="Kirby CMS" \
 	org.opencontainers.image.created="${BUILD_DATE}" \
 	org.opencontainers.image.vendor="Mittwald CM Service GmbH & Co. KG" \
 	org.opencontainers.image.licenses="MIT" \
-	org.opencontainers.image.source="https://github.com/mittwald/kirby-docker" \
-	org.opencontainers.image.documentation="https://github.com/mittwald/kirby-docker#readme" \
+	org.opencontainers.image.source="https://github.com/mittwald/docker-kirby" \
+	org.opencontainers.image.documentation="https://github.com/mittwald/docker-kirby#readme" \
 	de.mittwald.kirby.php-version="${PHP_VERSION}" \
 	de.mittwald.kirby.frankenphp-version="${FRANKENPHP_VERSION}"

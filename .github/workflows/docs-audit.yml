@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   audit:
-    if: github.repository == 'mittwald/kirby-docker'
+    if: github.repository == 'mittwald/docker-kirby'
     uses: ./.github/workflows/agent-task.yml
     with:
       task: kirby-docs-audit

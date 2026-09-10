@@ -33,7 +33,7 @@ jobs:
   propose:
     name: propose versions.json updates
     runs-on: ubuntu-latest
-    if: github.repository == 'mittwald/kirby-docker'
+    if: github.repository == 'mittwald/docker-kirby'
     outputs:
       handoffs: ${{ steps.check.outputs.handoffs }}
     steps:

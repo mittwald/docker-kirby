@@ -31,7 +31,7 @@ STABLE_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 
 def fetch_stable_versions(url: str = PACKAGIST_URL) -> list[tuple[int, int, int]]:
     """Return every stable getkirby/cms release, newest first."""
-    request = urllib.request.Request(url, headers={"User-Agent": "mittwald-kirby-docker"})
+    request = urllib.request.Request(url, headers={"User-Agent": "mittwald-docker-kirby"})
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             payload = json.load(response)

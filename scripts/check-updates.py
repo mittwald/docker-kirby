@@ -49,7 +49,7 @@ MINIMUM_PHP = (8, 2)
 
 
 def get_json(url: str):
-    request = urllib.request.Request(url, headers={"User-Agent": "mittwald-kirby-docker"})
+    request = urllib.request.Request(url, headers={"User-Agent": "mittwald-docker-kirby"})
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.load(response)
 

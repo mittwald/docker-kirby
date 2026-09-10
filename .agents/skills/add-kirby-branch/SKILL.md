@@ -96,7 +96,7 @@ Before removing one, check that Kirby actually declared it end of life
 
 ```
 python3 scripts/resolve-versions.py                     # tags look right?
-python3 -m unittest discover -s scripts -p 'test_*.py'
+scripts/lint.sh                                         # same checks CI runs
 docker buildx build --build-arg KIRBY_VERSION=<version> \
   --build-arg PLAINKIT_CONSTRAINT=<plainkit constraint> \
   -t kirby-new:<branch> --load ./image

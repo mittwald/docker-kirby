@@ -262,6 +262,7 @@ scripts/
   resolve-versions.py   versions.json + Packagist -> build matrix
   check-updates.py      finds new Kirby majors and PHP bumps
   smoke-test.sh         starts a built image and asserts it serves Kirby
+  lint.sh               every static check, pinned; CI runs exactly this
 .github/workflows/      ci, publish, lint, update-versions, docs-audit,
                         build and agent-task (both reusable)
 .agents/skills/         maintenance tasks that need judgement, run by agents
@@ -319,6 +320,8 @@ docker buildx build --build-arg KIRBY_VERSION=5.5.3 --build-arg PLAINKIT_CONSTRA
   -t kirby:dev --load ./image
 scripts/smoke-test.sh kirby:dev --kirby-version 5.5.3 --php-version 8.4
 ```
+
+`scripts/lint.sh` runs every static check — hadolint, shellcheck, actionlint, the Python tests, `php -l`, Caddyfile formatting and the `versions.json` checks. CI runs that same script with the same pinned, containerised tools, so a green run locally is a green run in CI. Pass a name to run one check: `scripts/lint.sh hadolint`.
 
 ## License
 

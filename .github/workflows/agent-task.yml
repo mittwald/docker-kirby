@@ -88,7 +88,7 @@ jobs:
         run: |
           PREAMBLE=$(cat <<'PREAMBLE_EOF'
           You are running unattended in a GitHub Actions job against the
-          mittwald/kirby-docker repository, which builds Kirby CMS container
+          mittwald/docker-kirby repository, which builds Kirby CMS container
           images. Read README.md for what the repository is and how it is put
           together.
 
@@ -98,26 +98,26 @@ jobs:
           unchanged and say so clearly in the pull request body rather than
           guessing.
 
-          Verification is not optional. This repository can build and test
-          itself, and Docker is available on this runner:
+          Verification is not optional. This repository can check, build and
+          test itself, and Docker is available on this runner:
 
-            python3 scripts/resolve-versions.py
-            python3 -m unittest discover -s scripts -p 'test_*.py'
+            scripts/lint.sh
             docker buildx build --build-arg KIRBY_VERSION=<version> \
               --build-arg PLAINKIT_CONSTRAINT=<constraint> \
               -t kirby-agent:<branch> --load ./image
             scripts/smoke-test.sh kirby-agent:<branch> \
               --kirby-version <version> --php-version <php>
 
-          Any change you make to versions.json or the image must be verified by
-          an actual build and a passing smoke test before you open a pull
-          request. If the smoke test fails, fix the image rather than the
-          assertion, and only relax an assertion when you can point at a
-          deliberate upstream change. If you cannot get it green, open no pull
-          request and explain what failed.
+          "scripts/lint.sh" is the same set of checks CI runs, with the same
+          pinned tools, so passing it locally means passing it in CI. Run it
+          before you open a pull request, whatever you changed.
 
-          Keep versions.json in its canonical formatting by running
-          "python3 scripts/check-updates.py --reformat" after editing it.
+          Any change to versions.json or the image must additionally be
+          verified by an actual build and a passing smoke test. If the smoke
+          test fails, fix the image rather than the assertion, and only relax
+          an assertion when you can point at a deliberate upstream change. If
+          you cannot get it green, open no pull request and explain what
+          failed.
 
           You are already on a dedicated branch, checked out from an
           up-to-date main and created for exactly this run.
