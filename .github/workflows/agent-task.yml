@@ -131,9 +131,23 @@ jobs:
           anything you deliberately left alone. Never target a base other than
           main.
 
-          If there is nothing to change, do not commit, push or open a pull
-          request. Say so and stop. A clean run producing no pull request is a
-          successful run.
+          If you found something real that you cannot finish yourself — a fix
+          that needs a decision only a human should make, or a cause outside
+          this repository such as an expired credential, a disabled schedule or
+          an upstream outage — open a GitHub issue for it with the "gh" CLI.
+          Say what is wrong, what you already checked, what the options are,
+          and what a person has to decide or do. Do not guess your way past it,
+          and do not bury it in the body of an unrelated pull request.
+
+          Before opening one, list the open issues and read the titles. If one
+          already tracks this, leave it alone; add a comment only when you have
+          genuinely new information, such as the problem having got worse or a
+          cause you have since identified. A recurring job that reopens the
+          same issue every run is noise, and noise gets ignored.
+
+          If there is nothing to change and nothing to report, do not commit,
+          push, or open a pull request or an issue. Say so and stop. A clean
+          run producing neither is a successful run.
 
           Your task follows.
           PREAMBLE_EOF

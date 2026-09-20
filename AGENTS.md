@@ -134,8 +134,21 @@ opencode.json           model config for the agent tasks
 
 ## If you are running unattended
 
-`agent-task.yml` runs these skills under opencode on a schedule. In that mode:
-never stop to ask a question, leave anything genuinely ambiguous unchanged and
-say so in the pull request body, and open no pull request at all when there is
-nothing to change — a clean run that produces nothing is a successful run.
-Target `main`, never another base.
+`agent-task.yml` runs these skills under opencode on a schedule. Never stop to
+ask a question — there is nobody there. Target `main`, never another base.
+
+A run ends in exactly one of three states:
+
+- **It fixed something** → a pull request, verified by a real build and a
+  passing smoke test, describing what changed and what you deliberately left
+  alone.
+- **It found something it must not decide alone** → an issue. Moving the
+  `latest` tag, retiring an end-of-life branch, an expired credential, a
+  disabled schedule, an upstream outage. Say what is wrong, what you already
+  checked, and what a person has to decide. Read the open issues first: a
+  recurring job that files the same one every run is noise. Never guess past a
+  judgement call, and never bury one in the body of a pull request that is
+  about to be merged and forgotten.
+- **There was nothing to do** → nothing. No pull request, no issue. This is the
+  expected outcome most runs and is a success; do not manufacture a finding to
+  look useful.

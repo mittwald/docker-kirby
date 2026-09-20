@@ -83,6 +83,12 @@ major has had at least one patch release, and in a PR of its own:
 2. Add it to the new one.
 3. Note in the PR description what an unpinned deployment will be upgraded to.
 
+When you have just *added* a major, that moment has not arrived yet. Open an
+issue instead — "move `latest` to Kirby N once it has a patch release" — rather
+than leaving the note in the body of the pull request that adds the branch,
+where it disappears on merge. The same goes for an old branch that looks ready
+to retire.
+
 ## Retiring a branch
 
 Deleting the entry stops building that branch. Tags already on Docker Hub are

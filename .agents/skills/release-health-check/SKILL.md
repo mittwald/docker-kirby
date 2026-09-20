@@ -75,11 +75,21 @@ Report only what is actually wrong, with the command output that shows it. If
 everything is healthy, say so in one line and stop — and do not re-run the
 publish workflow to "refresh" a healthy tag.
 
-For a real failure, state which tags are affected, the last known good build
-date, and the likely cause. Re-running the publish workflow
-(`gh workflow run publish.yml`) is the right first remedy for a transient
-failure. A repeated failure needs the underlying cause fixed: if that cause is
-in this repository, fix it and open a pull request, verified the same way any
-other change to the image is. If it is not — an expired registry credential, a
-disabled schedule, an upstream outage — say so plainly and name what a human
-has to do, rather than working around it.
+For a real failure, work down this order:
+
+1. **A transient failure** — one publish run that did not finish, a tag a day
+   behind — is worth one re-run: `gh workflow run publish.yml`. Say that you
+   did it. Do not re-run a healthy tag to "refresh" it.
+2. **A cause in this repository** gets fixed and opened as a pull request,
+   verified the same way any other change to the image is.
+3. **Anything else** gets an issue: an expired registry credential, a schedule
+   that has stopped firing, an upstream outage, a repeated failure you have
+   diagnosed but should not fix unilaterally. Name which tags are affected, the
+   last known good build date, the cause as far as you established it, and what
+   a person has to do. Check the open issues first and do not file a second one
+   for a problem already tracked.
+
+The failure that matters most here is the quiet one: a publish that has been
+failing for one branch while the others stay green, so the images look
+maintained and one of them has silently stopped receiving security updates.
+That is worth an issue even when every tag still exists and resolves.
