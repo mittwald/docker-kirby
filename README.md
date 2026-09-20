@@ -262,6 +262,7 @@ scripts/
   resolve-versions.py   versions.json + Packagist -> build matrix
   check-updates.py      finds new Kirby majors and PHP bumps
   smoke-test.sh         starts a built image and asserts it serves Kirby
+  local-build.sh        builds all branches locally, host architecture only
   lint.sh               every static check, pinned; CI runs exactly this
 .github/workflows/      ci, publish, lint, update-versions, docs-audit,
                         build and agent-task (both reusable)
@@ -312,7 +313,17 @@ Add an entry to `versions.json`:
 
 Everything else follows: the build matrix, the tag ladder (`6`, `6.x`, `6.x.y`), the smoke test and the push. See `.agents/skills/add-kirby-branch/SKILL.md` for the decisions that are not automated — moving `latest`, and retiring an end-of-life branch.
 
-Locally:
+Locally, `scripts/local-build.sh` builds every branch in `versions.json` for the
+host architecture, with exactly the build arguments the CI matrix would use,
+and smoke tests each image before it counts as built. Images are
+tagged with the same tag ladder as the published ones:
+
+```sh
+scripts/local-build.sh               # build and smoke test all branches
+scripts/local-build.sh --skip-smoke  # just the images
+```
+
+For a single image pinned to one Kirby release:
 
 ```sh
 python3 scripts/resolve-versions.py
