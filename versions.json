@@ -13,7 +13,7 @@
     {
       "name": "5",
       "constraint": "^5.0",
-      "php": "8.4",
+      "php": "8.5",
       "latest": true
     },
     {
