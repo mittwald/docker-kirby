@@ -28,6 +28,13 @@ PACKAGIST_URL = "https://repo.packagist.org/p2/getkirby/cms.json"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STABLE_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 
+# Which GitHub-hosted runner builds a platform natively. A platform missing
+# here is an error, not a silent fallback to emulation on amd64.
+RUNNERS = {
+    "linux/amd64": "ubuntu-latest",
+    "linux/arm64": "ubuntu-24.04-arm",
+}
+
 
 def fetch_stable_versions(url: str = PACKAGIST_URL) -> list[tuple[int, int, int]]:
     """Return every stable getkirby/cms release, newest first."""
@@ -102,6 +109,7 @@ def build_matrix(manifest: dict, available: list[tuple[int, int, int]]) -> list[
 
         entries.append(
             {
+                "image": image,
                 "branch": branch["name"],
                 "kirby_version": kirby_version,
                 "plainkit": plainkit,
@@ -120,14 +128,44 @@ def build_matrix(manifest: dict, available: list[tuple[int, int, int]]) -> list[
     return entries
 
 
+def split_platforms(matrix: list[dict]) -> list[dict]:
+    """Expand a branch matrix into one entry per branch and platform.
+
+    Each entry carries the single `platform` it builds and the `runner` that
+    builds it natively. `platforms` is dropped: an entry still carrying the
+    full list would build every architecture on every runner.
+    """
+    entries = []
+    for entry in matrix:
+        for platform in entry["platforms"].split(","):
+            if platform not in RUNNERS:
+                raise SystemExit(
+                    f"no native runner known for {platform!r}: add one to RUNNERS "
+                    "in scripts/resolve-versions.py, or the build would emulate it"
+                )
+            split = {key: value for key, value in entry.items() if key != "platforms"}
+            # `linux/arm64` is not a legal artifact name, and the digest
+            # artifacts are named after it.
+            split["platform"] = platform
+            split["arch"] = platform.split("/", 1)[1]
+            split["runner"] = RUNNERS[platform]
+            entries.append(split)
+    return entries
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, default=REPO_ROOT / "versions.json")
     parser.add_argument("--format", choices=("text", "json"), default="text")
     parser.add_argument(
+        "--split-platforms",
+        action="store_true",
+        help="emit one entry per branch and platform, each with its native runner",
+    )
+    parser.add_argument(
         "--github-output",
         action="store_true",
-        help="append matrix=<json> to $GITHUB_OUTPUT",
+        help="append matrix=<json> and build-matrix=<json> to $GITHUB_OUTPUT",
     )
     args = parser.parse_args()
 
@@ -135,7 +173,8 @@ def main() -> int:
     matrix = build_matrix(manifest, fetch_stable_versions())
 
     if args.format == "json":
-        print(json.dumps({"include": matrix}, indent=2))
+        emit = split_platforms(matrix) if args.split_platforms else matrix
+        print(json.dumps({"include": emit}, indent=2))
     else:
         for entry in matrix:
             print(
@@ -144,10 +183,17 @@ def main() -> int:
             )
             for tag in entry["tags"]:
                 print(f"  -> {tag}")
+            for split in split_platforms([entry]):
+                print(f"  build {split['platform']} on {split['runner']}")
 
+    # `build-matrix` drives the per-architecture builds, `matrix` the per-branch
+    # tag assembly.
     if args.github_output and (output := os.environ.get("GITHUB_OUTPUT")):
         with open(output, "a", encoding="utf-8") as handle:
             handle.write(f"matrix={json.dumps({'include': matrix})}\n")
+            handle.write(
+                f"build-matrix={json.dumps({'include': split_platforms(matrix)})}\n"
+            )
 
     return 0
 

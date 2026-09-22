@@ -142,5 +142,65 @@ class MatrixTest(unittest.TestCase):
             )
 
 
+class SplitPlatformsTest(unittest.TestCase):
+    def matrix(self, platforms):
+        return resolve.build_matrix(
+            {
+                "image": "mittwald/kirby",
+                "defaults": {"frankenphp": "1", "os": "trixie", "platforms": platforms},
+                "branches": [
+                    {"name": "5", "constraint": "^5.0", "php": "8.4", "latest": True},
+                    {"name": "4", "constraint": "^4.0", "php": "8.4"},
+                ],
+            },
+            AVAILABLE,
+        )
+
+    def test_one_entry_per_branch_and_platform(self):
+        split = resolve.split_platforms(self.matrix(["linux/amd64", "linux/arm64"]))
+
+        self.assertEqual(
+            [(entry["branch"], entry["platform"]) for entry in split],
+            [
+                ("5", "linux/amd64"),
+                ("5", "linux/arm64"),
+                ("4", "linux/amd64"),
+                ("4", "linux/arm64"),
+            ],
+        )
+
+    def test_each_platform_gets_a_runner_of_its_own_architecture(self):
+        split = resolve.split_platforms(self.matrix(["linux/amd64", "linux/arm64"]))
+        runners = {entry["platform"]: entry["runner"] for entry in split}
+
+        self.assertEqual(runners["linux/amd64"], "ubuntu-latest")
+        self.assertEqual(runners["linux/arm64"], "ubuntu-24.04-arm")
+
+    def test_the_branch_payload_survives_the_split(self):
+        split = resolve.split_platforms(self.matrix(["linux/arm64"]))
+
+        self.assertEqual(split[0]["kirby_version"], "5.5.3")
+        self.assertEqual(split[0]["base_image"], "dunglas/frankenphp:1-php8.4-trixie")
+        self.assertEqual(split[0]["image"], "mittwald/kirby")
+        self.assertEqual(split[0]["tags"][0], "mittwald/kirby:5.5.3")
+
+    def test_arch_is_usable_as_an_artifact_name(self):
+        split = resolve.split_platforms(self.matrix(["linux/arm64"]))
+
+        self.assertEqual(split[0]["arch"], "arm64")
+
+    def test_the_platform_list_is_dropped(self):
+        # Left in place it would make every runner build every architecture.
+        split = resolve.split_platforms(self.matrix(["linux/amd64", "linux/arm64"]))
+
+        self.assertNotIn("platforms", split[0])
+
+    def test_a_platform_without_a_native_runner_is_rejected(self):
+        # Failing loudly beats silently emulating it on amd64, which is the
+        # cost this split exists to remove.
+        with self.assertRaises(SystemExit):
+            resolve.split_platforms(self.matrix(["linux/riscv64"]))
+
+
 if __name__ == "__main__":
     unittest.main()
