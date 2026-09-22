@@ -75,9 +75,18 @@ point at a deliberate upstream change, and say so.
   Apple Silicon machine builds arm64. A smoke test has already failed on one
   architecture while passing on the other. Note that the pushed image covers
   both but only the runner's architecture is smoke tested — a regression on the
-  other one would ship silently.
+  other one would ship silently. A pull request does not build arm64 at all:
+  it is compiled under qemu, which costs more than the entire native build, so
+  only `publish.yml` pays for it. An arm64-only break therefore lands on main
+  before anyone sees it. It cannot ship — build and push are one step, and a
+  failed architecture pushes nothing — but it does stop the publish until it is
+  fixed.
 - **The daily rebuild runs with the layer cache disabled** so distribution
-  security updates are actually installed. Do not "optimise" that away.
+  security updates are actually installed. Do not "optimise" that away. Both
+  builds in `build.yml` take `no-cache`, not just the test build: the
+  multi-architecture build keeps a layer cache of its own now, so leaving it
+  out would let the nightly reuse last night's arm64 layers and quietly install
+  nothing.
 
 ## Do not let a check pass by accident
 
