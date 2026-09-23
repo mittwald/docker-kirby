@@ -4,6 +4,9 @@ Container images for [Kirby CMS](https://getkirby.com), served by [FrankenPHP](h
 
 The images are rebuilt every day, so a `docker pull` picks up Kirby patch releases and distribution security updates without anything in this repository changing.
 
+> [!WARNING]
+> This project is experimental; at the moment, we do not recommend production usage.
+
 ## Supported tags
 
 | Tag | Kirby | PHP | Notes |
