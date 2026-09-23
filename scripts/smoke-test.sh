@@ -71,6 +71,8 @@ cleanup() {
 	if [ -n "$CONTAINER" ]; then
 		docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 	fi
+	docker rm -f "${RUN_ID}-mailpit" >/dev/null 2>&1 || true
+	docker network rm "${RUN_ID}-net" >/dev/null 2>&1 || true
 	docker volume rm "${VOLUME_PREFIX}-content" "${VOLUME_PREFIX}-storage" "${VOLUME_PREFIX}-media" >/dev/null 2>&1 || true
 	rm -rf "${BIND_DIR:-}" 2>/dev/null || true
 }
@@ -320,6 +322,89 @@ docker exec "$CONTAINER" sh -c 'mkdir -p /app/storage/content/relocated && print
 assert_eq "200" "$(status_of /relocated)" "Kirby reads pages from the relocated content root"
 
 docker rm -f "$CONTAINER" >/dev/null
+CONTAINER=""
+
+# ---------------------------------------------------------------------------
+# Phase 5 — option groups that Kirby reads as a whole. `email`, `thumbs` and
+# `cache.pages` are looked up by their parent key, so the KIRBY_* variables
+# only reach them as nested arrays. The mail is sent to a Mailpit instance
+# that requires SMTP auth, so its arrival proves the credentials were used.
+# ---------------------------------------------------------------------------
+group "phase 5: nested options and SMTP mail"
+
+MAILPIT_IMAGE="axllent/mailpit:v1.31.2"
+MAIL_SUBJECT="smoke test ${RUN_ID}"
+
+docker network create "${RUN_ID}-net" >/dev/null
+docker run -d --name "${RUN_ID}-mailpit" --network "${RUN_ID}-net" --network-alias mailpit -P \
+	-e MP_SMTP_AUTH="smoke:s3cret" \
+	-e MP_SMTP_AUTH_ALLOW_INSECURE=true \
+	"$MAILPIT_IMAGE" >/dev/null
+MAILPIT_PORT="$(docker port "${RUN_ID}-mailpit" 8025/tcp | head -n1 | sed 's/.*://')"
+
+start_container "${RUN_ID}-mail" \
+	--network "${RUN_ID}-net" \
+	-e KIRBY_EMAIL_TRANSPORT=smtp \
+	-e KIRBY_EMAIL_HOST=mailpit \
+	-e KIRBY_EMAIL_PORT=1025 \
+	-e KIRBY_EMAIL_USER=smoke \
+	-e KIRBY_EMAIL_PASSWORD=s3cret \
+	-e KIRBY_EMAIL_SECURITY=false \
+	-e KIRBY_THUMBS_QUALITY=70 \
+	-e KIRBY_CACHE_PAGES=true \
+	-e KIRBY_CACHE_PAGES_TYPE=apcu \
+	-e KIRBY_AUTH_METHODS=password,code \
+	-e KIRBY_OPTIONS_JSON='{"email":{"presets":{"smoke":{"from":"kirby@example.com"}}},"auth":{"methods":["password"]}}'
+
+wait_healthy "$(host_port 8090/tcp)"
+
+attempt=0
+until curl -fsS "http://127.0.0.1:${MAILPIT_PORT}/api/v1/info" >/dev/null 2>&1; do
+	attempt=$((attempt + 1))
+	[ "$attempt" -lt 30 ] || { echo "mailpit did not become ready within 30s" >&2; docker logs "${RUN_ID}-mailpit" >&2 || true; exit 1; }
+	sleep 1
+done
+
+# Each line is prefixed so that a probe that never ran is distinguishable
+# from one that ran and printed an empty value.
+PROBE="$(docker exec -i -e MAIL_SUBJECT="$MAIL_SUBJECT" "$CONTAINER" php <<'EOF' 2>&1 || true
+<?php
+require '/app/kirby/bootstrap.php';
+$kirby = new Kirby(['roots' => ['index' => '/app/public', 'base' => '/app', 'site' => '/app/site', 'content' => '/app/content', 'storage' => '/app/storage']]);
+$transport = $kirby->option('email')['transport'] ?? [];
+echo 'TRANSPORT=', json_encode([$transport['type'] ?? null, $transport['username'] ?? null, $transport['auth'] ?? null, $transport['security'] ?? null]), "\n";
+echo 'PRESET=', json_encode($kirby->option('email')['presets']['smoke']['from'] ?? null), "\n";
+echo 'THUMBS=', json_encode($kirby->option('thumbs')['quality'] ?? null), "\n";
+echo 'CACHE=', json_encode($kirby->option('cache.pages')), "\n";
+echo 'METHODS=', json_encode($kirby->option('auth.methods')), "\n";
+try {
+	$kirby->email(['to' => 'nobody@example.com', 'subject' => 'unauthenticated', 'body' => '-', 'from' => 'kirby@example.com', 'transport' => ['type' => 'smtp', 'host' => 'mailpit', 'port' => 1025, 'security' => false]]);
+	echo "UNAUTH=accepted\n";
+} catch (Throwable $e) {
+	echo "UNAUTH=rejected\n";
+}
+try {
+	$kirby->email('smoke', ['to' => 'smoke@example.com', 'subject' => getenv('MAIL_SUBJECT'), 'body' => 'sent by the smoke test']);
+	echo "SENT=ok\n";
+} catch (Throwable $e) {
+	echo 'SENT=failed ', $e->getMessage(), "\n";
+}
+EOF
+)"
+
+assert_contains "$PROBE" 'TRANSPORT=["smtp","smoke",true,false]' "KIRBY_EMAIL_* reach option('email') with auth switched on"
+assert_contains "$PROBE" 'PRESET="kirby@example.com"' "KIRBY_OPTIONS_JSON merges into the email group instead of replacing it"
+assert_contains "$PROBE" 'THUMBS=70' "KIRBY_THUMBS_QUALITY reaches option('thumbs')"
+assert_contains "$PROBE" 'CACHE={"active":true,"type":"apcu"}' "KIRBY_CACHE_PAGES* reach option('cache.pages')"
+assert_contains "$PROBE" 'METHODS=["password"]' "a list in KIRBY_OPTIONS_JSON replaces the one from the environment"
+assert_contains "$PROBE" 'UNAUTH=rejected' "mailpit refuses mail without SMTP auth"
+assert_contains "$PROBE" 'SENT=ok' "Kirby sends mail through the configured SMTP transport"
+
+MESSAGES="$(curl -s "http://127.0.0.1:${MAILPIT_PORT}/api/v1/messages")"
+assert_contains "$MESSAGES" "\"Subject\":\"${MAIL_SUBJECT}\"" "the mail arrived in mailpit"
+
+docker rm -f "$CONTAINER" "${RUN_ID}-mailpit" >/dev/null
+docker network rm "${RUN_ID}-net" >/dev/null
 CONTAINER=""
 
 # ---------------------------------------------------------------------------
