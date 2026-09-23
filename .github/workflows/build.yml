@@ -54,7 +54,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Only the multi-architecture build needs emulation, and that one only
+      # runs when the result is actually pushed.
       - uses: docker/setup-qemu-action@v3
+        if: inputs.push
       - uses: docker/setup-buildx-action@v3
 
       - name: Build metadata
@@ -102,13 +105,24 @@ jobs:
 
       # Reuses the layers the test build just produced, so only the additional
       # architectures are actually compiled here.
+      #
+      # Skipped entirely unless the image is pushed. The foreign architecture
+      # is built under qemu, which takes several times longer than the whole
+      # native build, and on a pull request nothing consumed the result: it is
+      # never loaded, and the smoke test runs against the native test image
+      # above. What this gives up is that an arm64-only break now surfaces on
+      # main instead of in review. It cannot ship one — build and push are the
+      # same step, so a failed architecture pushes no image at all — but it
+      # does leave main red until someone fixes it.
       - name: Build and push
+        if: inputs.push
         uses: docker/build-push-action@v6
         with:
           context: ./image
           file: ./image/Dockerfile
           platforms: ${{ matrix.platforms }}
           push: ${{ inputs.push }}
+          no-cache: ${{ inputs.no-cache }}
           provenance: mode=max
           sbom: true
           tags: ${{ join(matrix.tags, ',') }}
@@ -121,6 +135,16 @@ jobs:
             VCS_REF=${{ github.sha }}
             BUILD_DATE=${{ steps.meta.outputs.date }}
           cache-from: type=gha,scope=kirby-${{ matrix.branch }}
+          # The test build above only ever exports amd64, so without this the
+          # foreign architecture starts from nothing on every run and compiles
+          # the PHP extensions under qemu again. Same scope on purpose: what
+          # this exports is a superset of what the test build did.
+          #
+          # `no-cache` above is what keeps the nightly rebuild honest now that
+          # these layers are kept. Until now it was set on the test build only,
+          # and the foreign architecture came out fresh by accident — because
+          # nothing had ever cached it.
+          cache-to: type=gha,mode=max,scope=kirby-${{ matrix.branch }}
 
       # Matrix values go through the environment rather than into the script
       # body, so nothing in versions.json can end up being executed.
@@ -130,7 +154,7 @@ jobs:
           KIRBY_VERSION: ${{ matrix.kirby_version }}
           PHP_VERSION: ${{ matrix.php }}
           BASE_IMAGE: ${{ matrix.base_image }}
-          PLATFORMS: ${{ matrix.platforms }}
+          PLATFORMS: ${{ inputs.push && matrix.platforms || 'linux/amd64' }}
           PUSHED: ${{ inputs.push }}
           TAGS: ${{ join(matrix.tags, ' ') }}
         run: |
@@ -138,7 +162,7 @@ jobs:
             echo "### kirby ${BRANCH}"
             echo
             echo "- Kirby \`${KIRBY_VERSION}\` on PHP \`${PHP_VERSION}\` (\`${BASE_IMAGE}\`)"
-            echo "- Platforms: \`${PLATFORMS}\`"
+            echo "- Platforms built: \`${PLATFORMS}\`"
             echo "- Pushed: \`${PUSHED}\`"
             echo "- Tags:"
             for tag in ${TAGS}; do echo "  - \`${tag}\`"; done
