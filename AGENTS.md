@@ -71,22 +71,24 @@ point at a deliberate upstream change, and say so.
 - **The project builds in `/kit`, not `/app`.** The FrankenPHP base image ships
   a welcome page at `/app/public`, and `composer create-project` refuses a
   non-empty target.
-- **Architectures genuinely differ.** CI's test build is `linux/amd64`; an
-  Apple Silicon machine builds arm64. A smoke test has already failed on one
-  architecture while passing on the other. Note that the pushed image covers
-  both but only the runner's architecture is smoke tested — a regression on the
-  other one would ship silently. A pull request does not build arm64 at all:
-  it is compiled under qemu, which costs more than the entire native build, so
-  only `publish.yml` pays for it. An arm64-only break therefore lands on main
-  before anyone sees it. It cannot ship — build and push are one step, and a
-  failed architecture pushes nothing — but it does stop the publish until it is
-  fixed.
+- **Architectures genuinely differ.** A smoke test has already failed on one
+  architecture while passing on the other. Each one is therefore built and
+  smoke tested on a runner of its own architecture — `ubuntu-latest` for
+  amd64, `ubuntu-24.04-arm` for arm64 — and neither is emulated. Adding a
+  platform to `versions.json` means adding its runner to `RUNNERS` in
+  `scripts/resolve-versions.py`; the resolver refuses a platform it has no
+  native runner for rather than quietly falling back to qemu.
+- **A tag is only ever written by the `merge` job.** The builds push untagged
+  images identified by digest alone, because a tag pushed from a build job
+  would name a single-architecture image and whichever job finished last would
+  overwrite the other. `merge` assembles the digests into one manifest list per
+  tag, after every architecture has passed its smoke test, and refuses to
+  publish if it is holding fewer digests than the branch has platforms.
 - **The daily rebuild runs with the layer cache disabled** so distribution
   security updates are actually installed. Do not "optimise" that away. Both
-  builds in `build.yml` take `no-cache`, not just the test build: the
-  multi-architecture build keeps a layer cache of its own now, so leaving it
-  out would let the nightly reuse last night's arm64 layers and quietly install
-  nothing.
+  build steps in `build.yml` take `no-cache`; the cache is scoped per branch
+  and architecture, so dropping it from either lets the nightly reuse
+  yesterday's layers and install nothing.
 
 ## Do not let a check pass by accident
 

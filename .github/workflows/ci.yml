@@ -1,12 +1,14 @@
 name: ci
 
 on:
+  # Pull requests only. Adding `push:` back builds every commit twice once a
+  # pull request is open: `concurrency` cannot collapse the two events, because
+  # `github.ref` is `refs/heads/<branch>` for one and `refs/pull/<n>/merge` for
+  # the other.
   pull_request:
-  push:
-    branches-ignore: [main]
   workflow_dispatch:
 
-# A newer push to the same branch makes the running build irrelevant.
+# A newer push to the same pull request makes the running build irrelevant.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
