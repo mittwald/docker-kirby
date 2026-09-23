@@ -32,7 +32,7 @@ jobs:
     outputs:
       matrix: ${{ steps.resolve.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve versions.json against Packagist
         id: resolve
@@ -52,13 +52,13 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Only the multi-architecture build needs emulation, and that one only
       # runs when the result is actually pushed.
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
         if: inputs.push
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Build metadata
         id: meta
@@ -67,7 +67,7 @@ jobs:
       # Single-architecture build that can be loaded into the local daemon, so
       # the smoke test runs against the exact image that is about to be pushed.
       - name: Build for testing
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./image
           file: ./image/Dockerfile
@@ -98,7 +98,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: inputs.push
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -116,7 +116,7 @@ jobs:
       # does leave main red until someone fixes it.
       - name: Build and push
         if: inputs.push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./image
           file: ./image/Dockerfile
