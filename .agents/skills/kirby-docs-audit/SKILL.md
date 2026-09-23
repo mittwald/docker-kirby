@@ -18,7 +18,7 @@ Fetch these four pages and treat them as the source of truth:
 | Page | What the image derives from it |
 | --- | --- |
 | <https://getkirby.com/docs/reference/system/requirements> | PHP versions, required and recommended extensions |
-| <https://getkirby.com/docs/guide/configuration/custom-folder-setup> | The roots in `image/app/public/index.php` |
+| <https://getkirby.com/docs/guide/configuration/custom-folder-setup> | The roots in `image/share/roots.php` |
 | <https://getkirby.com/docs/cookbook/development-deployment/caddy> | The blocking rules in `image/Caddyfile` |
 | <https://getkirby.com/docs/reference/system/options> | The option names in `image/share/env-options.php` |
 | <https://github.com/getkirby/plainkit> | The site skeleton, and the layout the build rearranges |
@@ -44,7 +44,7 @@ the newest — `v4.getkirby.com` mirrors the Kirby 4 documentation.
 2. **Writable roots.** Every directory the docs say must be writable has to
    appear in all four of these places, or a deployment will lose data on
    restart without failing:
-   - the `roots` array in `image/app/public/index.php`
+   - the `roots` array in `image/share/roots.php`
    - `writable_roots()` in `image/entrypoint.sh`
    - the builder's `mkdir -p` list and the `VOLUME` instruction in
      `image/Dockerfile`
