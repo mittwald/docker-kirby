@@ -39,7 +39,7 @@ jobs:
       # One entry per branch and architecture, for the builds themselves.
       build-matrix: ${{ steps.resolve.outputs.build-matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve versions.json against Packagist
         id: resolve
@@ -59,10 +59,10 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve.outputs.build-matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # No setup-qemu-action: every job builds its own architecture.
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Build metadata
         id: meta
@@ -71,7 +71,7 @@ jobs:
       # Loaded into the local daemon so the smoke test runs against the exact
       # image this job is about to push.
       - name: Build for testing
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./image
           file: ./image/Dockerfile
@@ -104,7 +104,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: inputs.push
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -115,7 +115,7 @@ jobs:
       - name: Build and push by digest
         id: push
         if: inputs.push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./image
           file: ./image/Dockerfile
@@ -147,7 +147,7 @@ jobs:
 
       - name: Upload digest
         if: inputs.push
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: digests-${{ matrix.branch }}-${{ matrix.arch }}
           path: /tmp/digests/*
@@ -183,17 +183,17 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
     steps:
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           pattern: digests-${{ matrix.branch }}-*
           merge-multiple: true
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
