@@ -159,16 +159,23 @@ These map onto [Kirby config options](https://getkirby.com/docs/reference/system
 | `KIRBY_API_ALLOW_INSECURE` | `api.allowInsecure` |
 | `KIRBY_AUTH_METHODS` | `auth.methods` (comma separated) |
 | `KIRBY_AUTH_TRIALS` | `auth.trials` |
-| `KIRBY_EMAIL_TRANSPORT` | `email.transport.type` |
-| `KIRBY_EMAIL_HOST`, `KIRBY_EMAIL_PORT`, `KIRBY_EMAIL_USER`, `KIRBY_EMAIL_SECURITY` | `email.transport.*` |
+| `KIRBY_EMAIL_TRANSPORT` | `email.transport.type` — `smtp` to send through a mail server |
+| `KIRBY_EMAIL_HOST` | `email.transport.host` |
+| `KIRBY_EMAIL_PORT` | `email.transport.port` |
+| `KIRBY_EMAIL_USER` | `email.transport.username` |
 | `KIRBY_EMAIL_PASSWORD`, `KIRBY_EMAIL_PASSWORD_FILE` | `email.transport.password` |
+| `KIRBY_EMAIL_SECURITY` | `email.transport.security` — `tls`, `ssl`, `true` (derived from the port, 587 or 465 only) or `false` |
 | `KIRBY_OPTIONS_JSON` | Any option, as a JSON object. Merged last, so it wins. |
+
+Setting `KIRBY_EMAIL_USER` or a password also sets `email.transport.auth`, without which Kirby would not log in to the SMTP server. If `KIRBY_EMAIL_SECURITY` is left unset, Kirby uses `ssl`, which is wrong for a server on port 587: set it to `tls` there.
 
 `KIRBY_OPTIONS_JSON` is the escape hatch for anything without its own variable:
 
 ```sh
 -e KIRBY_OPTIONS_JSON='{"thumbs.presets.default":{"width":1200},"routes":[]}'
 ```
+
+It is merged into the options built from the variables above: an object such as `{"email":{"presets":{...}}}` adds to the email settings instead of replacing them, while a list such as `routes` or `auth.methods` replaces the existing one as a whole.
 
 ### License
 
