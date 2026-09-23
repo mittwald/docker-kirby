@@ -1,0 +1,47 @@
+name: release health
+
+# Checks that what is actually on Docker Hub matches what versions.json
+# promises. The failure this exists for is the quiet one: a publish that fails
+# for a single branch while the others stay green, so the images look
+# maintained while one of them has silently stopped receiving security updates.
+# That happened — Kirby 5 stopped building for three days while Kirby 4 kept
+# going — and nothing said so.
+#
+# Note the limitation: GitHub disables scheduled workflows after 60 days of
+# repository inactivity, so this check cannot detect its own disablement. If
+# the repository ever goes quiet, nothing here will tell you that the watchdog
+# stopped too.
+
+on:
+  schedule:
+    - cron: "37 7 * * 2"
+  workflow_dispatch:
+
+concurrency:
+  group: release-health
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.repository == 'mittwald/docker-kirby'
+    uses: ./.github/workflows/agent-task.yml
+    with:
+      task: release-health-check
+      branch-prefix: automation/release-health
+      prompt: |
+        Run the `release-health-check` skill against this repository.
+
+        Follow its escalation order exactly: one re-run of the publish workflow
+        for something transient, a pull request when the cause is in this
+        repository, an issue for anything else. Do not re-run a publish that is
+        already healthy.
+
+        Most weeks everything is fine. Saying so and stopping is the expected
+        outcome — do not manufacture a finding, and do not open an issue to
+        report that there is nothing to report.
+    secrets:
+      MITTWALD_AI_API_KEY: ${{ secrets.MITTWALD_AI_API_KEY }}
+      RELEASE_USER_TOKEN: ${{ secrets.RELEASE_USER_TOKEN }}

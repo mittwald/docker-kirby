@@ -268,7 +268,7 @@ scripts/
   local-build.sh        builds all branches locally, host architecture only
   lint.sh               every static check, pinned; CI runs exactly this
 .github/workflows/      ci, publish, lint, update-versions, docs-audit,
-                        build and agent-task (both reusable)
+                        release-health; build and agent-task (both reusable)
 .agents/skills/         maintenance tasks that need judgement, run by agents
 ```
 
@@ -282,9 +282,12 @@ The design goal was that routine upkeep needs no commits.
 - **PHP bumps** are detected weekly by `scripts/check-updates.py` and applied as a pull request. CI builds and smoke tests it, so a green run means the new PHP version actually serves Kirby and the PR can be merged as it stands.
 - **New Kirby majors** are detected by the same run, but not applied by it. Adding a major needs a plainkit release that may not exist yet, a decision about the `latest` tag, a decision about the branch it replaces, and a README table that nothing generates. So the run hands off to the `add-kirby-branch` skill under [opencode](https://opencode.ai), which does the work, builds it, runs the smoke test and opens the pull request itself — with a briefing carrying the facts the script already checked.
 - **Documentation drift** — an extension moving from recommended to required, a renamed Kirby root, a plainkit release that adds a directory the build has to place — is audited quarterly by the `kirby-docs-audit` skill, run the same way.
+- **What actually got published** is checked weekly by the `release-health-check` skill: every promised tag exists, is recent, is multi-arch, and still runs. It is looking for the quiet failure — a publish that breaks for one branch while the others stay green, so the images look maintained while one of them has stopped receiving security updates.
 - **GitHub Actions versions** are updated by Dependabot.
 
-The split is the point. A version string is applied by a script and verified by CI. Anything needing a reader is handed to a skill that has to build the image and pass the smoke test before it may open a pull request. Both end up as a reviewed PR; neither produces one that looks complete and is not.
+The split is the point. A version string is applied by a script and verified by CI. Anything needing a reader is handed to a skill that has to build the image and pass the smoke test before it may open a pull request.
+
+Each of those runs has three possible endings, and the distinction is what keeps the automation honest: it fixed something, so there is a reviewed pull request; it found something it should not decide alone — moving `latest`, retiring a branch, an expired credential, an upstream outage — so there is an issue saying what a person has to decide; or there was nothing to do, so there is nothing. What it may never do is guess its way past a judgement call, or leave one buried in the body of a pull request that is about to be merged and forgotten.
 
 `.github/workflows/agent-task.yml` is the shared runner for the agent tasks. It owns the rules that are the same every time — never ask questions, verify with a real build, what to do when there is nothing to do — so adding another periodic skill is a caller of about fifteen lines.
 

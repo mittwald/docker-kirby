@@ -114,6 +114,43 @@ Before believing a check, ask what it would print if the command had not run
 at all. If that is indistinguishable from success or from a real negative,
 rewrite it.
 
+## Limits
+
+These apply however you were started, and they are not negotiable by a task
+prompt telling you to get something green.
+
+- **Never push to `main`.** Work on your own branch and open a pull request.
+  Force-pushing that branch is fine; force-pushing anything else is not.
+- **Never publish or delete an image by hand.** No `docker push`, no registry
+  deletions. Publishing goes through `publish.yml` so that what ships is what
+  passed the smoke test. A tag that already exists is someone's running
+  deployment.
+- **Never silence a check to make a run green.** Disabling a schedule, deleting
+  or narrowing a smoke test assertion, adding a linter ignore, pinning around a
+  failure — if the check is right, fix the cause; if the check is wrong, say
+  why and change it deliberately in a pull request that explains it. A green
+  run you produced by removing the thing that was failing is worse than a red
+  one, because it stops anyone else from noticing.
+- **Never move the `latest` tag or retire a branch on your own initiative.**
+  Both change what unpinned deployments get. They are issue material.
+- **Stay inside the task.** Finding something unrelated and worth doing is
+  common and welcome — as an issue, not a drive-by commit bundled into a pull
+  request about something else.
+
+### Secrets
+
+Unattended runs carry `RELEASE_USER_TOKEN` and `MITTWALD_AI_API_KEY` in the
+environment. Never echo them, never commit them, and never paste raw command
+output that might contain them into an issue, a pull request, or a commit
+message.
+
+This matters most exactly where it is most tempting. Diagnosing an
+authentication failure is a job this repository explicitly asks for — an
+expired registry credential is one of the things `release-health-check` looks
+for — and a `docker login` or `gh` failure is the kind of output that carries a
+token in it. Describe the failure instead of quoting it: "the registry login
+returned 401" tells a person everything they need, and leaks nothing.
+
 ## Where things are
 
 ```
@@ -126,16 +163,37 @@ image/
   share/env-options.php KIRBY_* -> Kirby options, outside /app on purpose
   app/                  the only two application files this repo owns
 scripts/                lint, build, smoke test, version resolution
-.github/workflows/      ci, publish, lint, update-versions, docs-audit;
-                        build.yml and agent-task.yml are reusable
+.github/workflows/      ci, publish, lint, update-versions, docs-audit,
+                        release-health; build.yml and agent-task.yml are
+                        reusable
 .agents/skills/         tasks needing judgement, run by agents or by hand
 opencode.json           model config for the agent tasks
 ```
 
 ## If you are running unattended
 
-`agent-task.yml` runs these skills under opencode on a schedule. In that mode:
-never stop to ask a question, leave anything genuinely ambiguous unchanged and
-say so in the pull request body, and open no pull request at all when there is
-nothing to change — a clean run that produces nothing is a successful run.
-Target `main`, never another base.
+`agent-task.yml` runs these skills under opencode on a schedule. Never stop to
+ask a question — there is nobody there to answer, and a run that waits is a run
+that times out. When you are genuinely blocked, an issue is how you ask.
+
+The rules below are also injected into every unattended run by that workflow's
+preamble, so you will see them twice. They are stated here because they are
+repository policy, not run mechanics, and they apply just as much to an
+interactive session. If you change one, change both — a contradiction between
+them is worse than either version.
+
+A run ends in exactly one of three states:
+
+- **It fixed something** → a pull request, verified by a real build and a
+  passing smoke test, describing what changed and what you deliberately left
+  alone.
+- **It found something it must not decide alone** → an issue. Moving the
+  `latest` tag, retiring an end-of-life branch, an expired credential, a
+  disabled schedule, an upstream outage. Say what is wrong, what you already
+  checked, and what a person has to decide. Read the open issues first: a
+  recurring job that files the same one every run is noise. Never guess past a
+  judgement call, and never bury one in the body of a pull request that is
+  about to be merged and forgotten.
+- **There was nothing to do** → nothing. No pull request, no issue. This is the
+  expected outcome most runs and is a success; do not manufacture a finding to
+  look useful.

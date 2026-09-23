@@ -110,6 +110,9 @@ that motivated each change in the body. Finding nothing is the expected result
 most of the time: say so, open no pull request, and stop.
 
 If a finding needs a judgement call the docs cannot settle — dropping an
-end-of-life branch, moving the `latest` tag — do not pick one. Leave the code
-alone and describe the options in the body of whatever pull request you are
-already opening, or in your final message if there is none.
+end-of-life branch, moving the `latest` tag, an extension that would grow the
+image noticeably — do not pick one. Leave the code alone and open an issue
+saying what changed upstream, what the options are, and what the trade-off is.
+An issue outlives a merged pull request's body, which is where a deferred
+decision goes to be forgotten. Check the open issues first so a recurring audit
+does not file the same one twice.
