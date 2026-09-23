@@ -354,6 +354,8 @@ start_container "${RUN_ID}-mail" \
 	-e KIRBY_CACHE_PAGES=true \
 	-e KIRBY_CACHE_PAGES_TYPE=apcu \
 	-e KIRBY_AUTH_METHODS=password,code \
+	-e KIRBY_AUTH_EMAIL_FROM=login@example.com \
+	-e "KIRBY_AUTH_EMAIL_FROM_NAME=Smoke Sender" \
 	-e KIRBY_OPTIONS_JSON='{"email":{"presets":{"smoke":{"from":"kirby@example.com"}}},"auth":{"methods":["password"]}}'
 
 wait_healthy "$(host_port 8090/tcp)"
@@ -389,6 +391,14 @@ try {
 } catch (Throwable $e) {
 	echo 'SENT=failed ', $e->getMessage(), "\n";
 }
+// The login code mail takes its sender from auth.challenge.email.*, not from
+// the transport. The recipient does not have to exist as an account.
+try {
+	Kirby\Cms\Auth\EmailChallenge::create(new Kirby\Cms\User(['email' => 'editor@example.com']), ['mode' => 'login', 'timeout' => 600]);
+	echo "CHALLENGE=ok\n";
+} catch (Throwable $e) {
+	echo 'CHALLENGE=failed ', $e->getMessage(), "\n";
+}
 EOF
 )"
 
@@ -402,6 +412,8 @@ assert_contains "$PROBE" 'SENT=ok' "Kirby sends mail through the configured SMTP
 
 MESSAGES="$(curl -s "http://127.0.0.1:${MAILPIT_PORT}/api/v1/messages")"
 assert_contains "$MESSAGES" "\"Subject\":\"${MAIL_SUBJECT}\"" "the mail arrived in mailpit"
+assert_contains "$PROBE" 'CHALLENGE=ok' "Kirby sends a login code"
+assert_contains "$MESSAGES" '"From":{"Name":"Smoke Sender","Address":"login@example.com"}' "the login code comes from KIRBY_AUTH_EMAIL_FROM{,_NAME}"
 
 docker rm -f "$CONTAINER" "${RUN_ID}-mailpit" >/dev/null
 docker network rm "${RUN_ID}-net" >/dev/null
