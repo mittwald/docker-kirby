@@ -159,6 +159,8 @@ These map onto [Kirby config options](https://getkirby.com/docs/reference/system
 | `KIRBY_API_ALLOW_INSECURE` | `api.allowInsecure` |
 | `KIRBY_AUTH_METHODS` | `auth.methods` (comma separated) |
 | `KIRBY_AUTH_TRIALS` | `auth.trials` |
+| `KIRBY_AUTH_EMAIL_FROM` | `auth.challenge.email.from` — sender of login and password reset codes |
+| `KIRBY_AUTH_EMAIL_FROM_NAME` | `auth.challenge.email.fromName` |
 | `KIRBY_EMAIL_TRANSPORT` | `email.transport.type` — `smtp` to send through a mail server |
 | `KIRBY_EMAIL_HOST` | `email.transport.host` |
 | `KIRBY_EMAIL_PORT` | `email.transport.port` |
@@ -168,6 +170,8 @@ These map onto [Kirby config options](https://getkirby.com/docs/reference/system
 | `KIRBY_OPTIONS_JSON` | Any option, as a JSON object. Merged last, so it wins. |
 
 Setting `KIRBY_EMAIL_USER` or a password also sets `email.transport.auth`, without which Kirby would not log in to the SMTP server. If `KIRBY_EMAIL_SECURITY` is left unset, Kirby uses `ssl`, which is wrong for a server on port 587: set it to `tls` there.
+
+Login and password reset codes are sent from `noreply@` followed by the host of `KIRBY_URL`, under the site title. Most SMTP servers reject a sender their account does not own, so when the panel sends codes by email, set `KIRBY_AUTH_EMAIL_FROM` to an address the mail account is allowed to use. Kirby has no global default sender: mail sent from your own templates and plugins still names its sender itself, or takes it from an email preset.
 
 `KIRBY_OPTIONS_JSON` is the escape hatch for anything without its own variable:
 
