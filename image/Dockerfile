@@ -132,8 +132,8 @@ WORKDIR /app
 RUN rm -rf /app
 
 # The whole tree as plainkit and Composer left it, then the two files this
-# image owns: the front controller that declares the roots, and the config
-# that bridges KIRBY_* environment variables into Kirby options.
+# image owns: the front controller, and the config that bridges KIRBY_*
+# environment variables into Kirby options.
 COPY --from=builder --chown=kirby:kirby /kit/ /app/
 COPY --chown=kirby:kirby app/ /app/
 

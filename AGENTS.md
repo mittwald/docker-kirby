@@ -41,7 +41,7 @@ point at a deliberate upstream change, and say so.
 - **The site skeleton comes from Kirby's plainkit at build time.** Templates,
   snippets, blueprints and starting content are not maintained here and must
   not be added back. Exactly two application files are ours:
-  `image/app/public/index.php` (declares the roots) and
+  `image/app/public/index.php` (the front controller) and
   `image/app/site/config/config.php` (bridges `KIRBY_*` into Kirby options).
 - **Only `/app/public` is served.** `content`, `site`, `kirby`, `storage` and
   `composer.json` sit outside the document root, which is a stronger guarantee
@@ -56,7 +56,7 @@ point at a deliberate upstream change, and say so.
   `python3 scripts/check-updates.py --reformat` after editing it; `lint.sh`
   enforces it, so automated bumps produce one-line diffs.
 - **Every writable root appears in four places**, or a deployment loses data on
-  restart without failing: the `roots` array in `public/index.php`,
+  restart without failing: the `roots` array in `share/roots.php`,
   `writable_roots()` in `entrypoint.sh`, the builder's `mkdir -p` plus the
   `VOLUME` instruction, and the README's volume table.
 
@@ -160,9 +160,11 @@ versions.json           every image that gets built, as data
 image/
   Dockerfile            three stages: php-base, builder (plainkit), runtime
   Caddyfile             FrankenPHP skeleton (MIT) + Kirby's recipe
-  entrypoint.sh         prepares writable roots, license, drops privileges
+  entrypoint.sh         prepares writable roots, license, first admin,
+                        drops privileges
   php/kirby.ini         fixed PHP settings; tunables live in the Caddyfile
-  share/env-options.php KIRBY_* -> Kirby options, outside /app on purpose
+  share/                env-options.php (KIRBY_* -> Kirby options), roots.php
+                        and create-admin.php, outside /app on purpose
   app/                  the only two application files this repo owns
 scripts/                lint, build, smoke test, version resolution
 .github/workflows/      ci, publish, lint, update-versions, docs-audit,

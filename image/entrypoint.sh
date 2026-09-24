@@ -2,10 +2,10 @@
 #
 # Entrypoint for the mittwald/kirby images.
 #
-# Prepares the writable roots, materialises the Kirby license from the
-# environment and then hands over to FrankenPHP's own entrypoint. Every step is
-# a no-op when there is nothing to do, so an unconfigured `docker run` still
-# comes up.
+# Prepares the writable roots, materialises the Kirby license and the first
+# panel account from the environment and then hands over to FrankenPHP's own
+# entrypoint. Every step is a no-op when there is nothing to do, so an
+# unconfigured `docker run` still comes up.
 
 set -eu
 
@@ -91,8 +91,19 @@ install_license() {
 	log "installed Kirby license into ${license_root}"
 }
 
+# Creates the first panel account from KIRBY_ADMIN_*, so that a deployment
+# reachable only under its public hostname does not need `panel.install`. Runs
+# after the privilege drop, so the account belongs to the kirby user, and does
+# nothing once any account exists.
+create_admin() {
+	[ -n "${KIRBY_ADMIN_EMAIL:-}${KIRBY_ADMIN_PASSWORD:-}${KIRBY_ADMIN_PASSWORD_FILE:-}" ] || return 0
+
+	php /usr/local/share/kirby/create-admin.php "${KIRBY_APP_ROOT}/public"
+}
+
 drop_privileges_if_root "$@"
 prepare_roots
 install_license
+create_admin
 
 exec docker-php-entrypoint "$@"

@@ -49,7 +49,7 @@ docker run -d --name kirby -p 8080:80 \
     └── media/         generated thumbnails               (volume)
 ```
 
-The site skeleton — templates, snippets, blueprints and the starting content — is Kirby's own [plainkit](https://github.com/getkirby/plainkit), installed with `composer create-project` during the build. Nothing about it is maintained in this repository, so it tracks whatever upstream ships. Exactly two files are this image's own: `public/index.php`, which declares the roots, and `site/config/config.php`, which bridges the `KIRBY_*` variables into Kirby options.
+The site skeleton — templates, snippets, blueprints and the starting content — is Kirby's own [plainkit](https://github.com/getkirby/plainkit), installed with `composer create-project` during the build. Nothing about it is maintained in this repository, so it tracks whatever upstream ships. Exactly two files are this image's own: `public/index.php`, the front controller, and `site/config/config.php`, which bridges the `KIRBY_*` variables into Kirby options.
 
 plainkit is not released in lockstep with the CMS — its 4.x line stopped at 4.8.0 while Kirby 4 kept going — so the kit is resolved by major version and the exact CMS release is pinned right afterwards. The build fails if the installed version does not match the pin.
 
@@ -198,6 +198,21 @@ Or mount it as a secret and point at the file, which keeps it out of `docker ins
 
 The entrypoint writes it to `site/config/.license` with mode `600` on every start, so the license does not have to be persisted in a volume.
 
+### First panel account
+
+Kirby offers its panel installer only on `localhost`. To get an admin account on a deployment that is only reachable under its public hostname, set:
+
+| Variable | Description |
+| --- | --- |
+| `KIRBY_ADMIN_EMAIL` | Email address of the account |
+| `KIRBY_ADMIN_PASSWORD`, `KIRBY_ADMIN_PASSWORD_FILE` | Its password, at least 8 characters. From a file, a trailing line break is dropped. |
+
+The entrypoint creates the account with the `admin` role **only while no account exists at all**, before the server starts. After that the variables do nothing: changing `KIRBY_ADMIN_PASSWORD` does not change the password, and an account renamed or deleted in the panel does not come back. The log says which of the two happened on every start.
+
+The password stays in the container's environment for as long as the variable is set, so prefer `KIRBY_ADMIN_PASSWORD_FILE` with a mounted secret, or remove the variables once the account exists and change the password in the panel.
+
+If the account cannot be created — a missing password, one Kirby rejects, a plugin that fails to load — the container exits with an error instead of starting without an admin. Start a single replica for the first run: two containers starting at the same moment on an empty accounts volume could both try to create the account.
+
 ## Building your own site on top
 
 This is the intended way to use the image. Your content and code live in your repository and become an immutable image; only runtime state lives in volumes.
@@ -253,7 +268,7 @@ volumes:
 
 ## Notes for production
 
-**Creating the first panel user.** Kirby refuses to run its installer on a non-local host unless you allow it. Start once with `KIRBY_PANEL_INSTALL=true`, create the account, then remove the variable — leaving it on means anyone reaching `/panel` can create an admin user.
+**Creating the first panel user.** Kirby refuses to run its installer on a non-local host unless you allow it. Set `KIRBY_ADMIN_EMAIL` and `KIRBY_ADMIN_PASSWORD_FILE` instead, as described under [First panel account](#first-panel-account). `KIRBY_PANEL_INSTALL=true` also works, but until the account exists, anyone reaching `/panel` can create an admin user.
 
 **Behind a TLS-terminating proxy.** Keep `SERVER_NAME` on a bare port, set `TRUSTED_PROXIES` if your proxy is outside the private ranges, and set `KIRBY_URL` to the public URL so Kirby generates correct links.
 

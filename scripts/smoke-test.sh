@@ -73,8 +73,8 @@ cleanup() {
 	fi
 	docker rm -f "${RUN_ID}-mailpit" >/dev/null 2>&1 || true
 	docker network rm "${RUN_ID}-net" >/dev/null 2>&1 || true
-	docker volume rm "${VOLUME_PREFIX}-content" "${VOLUME_PREFIX}-storage" "${VOLUME_PREFIX}-media" >/dev/null 2>&1 || true
-	rm -rf "${BIND_DIR:-}" 2>/dev/null || true
+	docker volume rm "${VOLUME_PREFIX}-content" "${VOLUME_PREFIX}-storage" "${VOLUME_PREFIX}-media" "${VOLUME_PREFIX}-accounts" >/dev/null 2>&1 || true
+	rm -rf "${BIND_DIR:-}" "${SECRET_DIR:-}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -107,6 +107,22 @@ wait_healthy() {
 		fi
 		sleep 1
 	done
+}
+
+# For containers that are supposed to fail during startup. Prints the exit
+# code, or RUNNING if the container is still up after 30s, so that a container
+# that never stopped cannot pass for one that exited.
+wait_exited() {
+	local attempt=0
+	while [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null)" = "true" ]; do
+		attempt=$((attempt + 1))
+		if [ "$attempt" -ge 30 ]; then
+			echo "RUNNING"
+			return 0
+		fi
+		sleep 1
+	done
+	echo "EXIT=$(docker inspect -f '{{.State.ExitCode}}' "$CONTAINER")"
 }
 
 status_of() {
@@ -417,6 +433,92 @@ assert_contains "$MESSAGES" '"From":{"Name":"Smoke Sender","Address":"login@exam
 
 docker rm -f "$CONTAINER" "${RUN_ID}-mailpit" >/dev/null
 docker network rm "${RUN_ID}-net" >/dev/null
+CONTAINER=""
+
+# ---------------------------------------------------------------------------
+# Phase 6 — the first panel account from KIRBY_ADMIN_*. It is created once on
+# an empty accounts root, owned by the kirby user even on a root start, and a
+# later start with different values leaves it alone. A configuration that
+# cannot produce an admin stops the container instead of starting without one.
+# ---------------------------------------------------------------------------
+group "phase 6: first panel account"
+
+ADMIN_PASSWORD="smoke-test-password"
+SECRET_DIR="$(mktemp -d)"
+printf '%s\n' "$ADMIN_PASSWORD" > "${SECRET_DIR}/admin-password"
+chmod 755 "$SECRET_DIR"
+chmod 644 "${SECRET_DIR}/admin-password"
+docker volume create "${VOLUME_PREFIX}-accounts" >/dev/null
+
+# Each line is prefixed, as in phase 5, so that a probe that never ran cannot
+# be mistaken for one that found nothing.
+admin_probe() {
+	docker exec -i -e ADMIN_PASSWORD="$ADMIN_PASSWORD" "$CONTAINER" sh -c '
+		echo "FOREIGN=$(find /app/storage/accounts -mindepth 1 ! -user kirby | wc -l)"
+		echo "FINGERPRINT=$(cd /app/storage/accounts && find . -type f | sort | xargs sha256sum | sha256sum | cut -c1-16)"
+		php' <<'EOF' 2>&1 || true
+<?php
+require '/app/kirby/bootstrap.php';
+$roots = require '/usr/local/share/kirby/roots.php';
+$kirby = new Kirby(['roots' => $roots('/app/public')]);
+$user  = $kirby->users()->first();
+echo 'COUNT=', $kirby->users()->count(), "\n";
+echo 'ADMIN=', json_encode([$user?->email(), $user?->role()->id()]), "\n";
+try {
+	echo 'PASSWORD=', $user !== null && $user->validatePassword(getenv('ADMIN_PASSWORD')) ? 'valid' : 'invalid', "\n";
+} catch (Throwable $e) {
+	echo "PASSWORD=invalid\n";
+}
+EOF
+}
+
+start_container "${RUN_ID}-admin1" \
+	--user 0:0 \
+	-v "${VOLUME_PREFIX}-accounts:/app/storage/accounts" \
+	-v "${SECRET_DIR}:/run/secrets:ro" \
+	-e KIRBY_ADMIN_EMAIL=admin@example.com \
+	-e KIRBY_ADMIN_PASSWORD_FILE=/run/secrets/admin-password
+
+wait_healthy "$(host_port 8090/tcp)"
+
+PROBE="$(admin_probe)"
+assert_contains "$(docker logs "$CONTAINER" 2>&1)" "created panel admin admin@example.com" "the entrypoint reports the new account"
+assert_contains "$PROBE" 'COUNT=1' "exactly one account exists"
+assert_contains "$PROBE" 'ADMIN=["admin@example.com","admin"]' "the account has the configured email and the admin role"
+assert_contains "$PROBE" 'PASSWORD=valid' "the password from KIRBY_ADMIN_PASSWORD_FILE works, without its line break"
+assert_contains "$PROBE" 'FOREIGN=0' "the account files belong to the kirby user after a root start"
+FINGERPRINT="$(printf '%s' "$PROBE" | sed -n 's/^FINGERPRINT=//p')"
+
+docker rm -f "$CONTAINER" >/dev/null
+
+start_container "${RUN_ID}-admin2" \
+	-v "${VOLUME_PREFIX}-accounts:/app/storage/accounts" \
+	-e KIRBY_ADMIN_EMAIL=other@example.com \
+	-e KIRBY_ADMIN_PASSWORD=a-different-password
+
+wait_healthy "$(host_port 8090/tcp)"
+
+PROBE="$(admin_probe)"
+assert_contains "$(docker logs "$CONTAINER" 2>&1)" "panel accounts exist, KIRBY_ADMIN_* is ignored" "the entrypoint reports that the variables were ignored"
+assert_contains "$PROBE" 'COUNT=1' "no second account is created"
+assert_contains "$PROBE" 'PASSWORD=valid' "the original password still works"
+if [ -n "$FINGERPRINT" ]; then
+	assert_contains "$PROBE" "FINGERPRINT=${FINGERPRINT}" "the account files are unchanged"
+else
+	fail "the account files could not be fingerprinted after the first start"
+fi
+
+docker rm -f "$CONTAINER" >/dev/null
+
+start_container "${RUN_ID}-admin3" -e KIRBY_ADMIN_EMAIL=admin@example.com
+assert_eq "EXIT=1" "$(wait_exited)" "an email without a password stops the container"
+assert_contains "$(docker logs "$CONTAINER" 2>&1)" "neither KIRBY_ADMIN_PASSWORD nor KIRBY_ADMIN_PASSWORD_FILE" "and says why"
+docker rm -f "$CONTAINER" >/dev/null
+
+start_container "${RUN_ID}-admin4" -e KIRBY_ADMIN_EMAIL=admin@example.com -e KIRBY_ADMIN_PASSWORD=short
+assert_eq "EXIT=1" "$(wait_exited)" "a password Kirby rejects stops the container"
+assert_contains "$(docker logs "$CONTAINER" 2>&1)" "cannot create the panel admin admin@example.com" "and says why"
+docker rm -f "$CONTAINER" >/dev/null
 CONTAINER=""
 
 # ---------------------------------------------------------------------------
