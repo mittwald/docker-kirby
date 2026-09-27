@@ -100,6 +100,20 @@ RUN set -eux; \
 	mkdir -p /kit/storage/accounts /kit/storage/cache /kit/storage/sessions /kit/storage/logs; \
 	rm -rf /kit/site/accounts /kit/site/cache /kit/site/sessions
 
+# The Kirby CLI (https://github.com/getkirby/cli) is installed as a project of
+# its own rather than required by the site, so its dependencies never take part
+# in resolving the plugins a derived image adds to /app/composer.json. Like the
+# base image tag, it follows upstream's latest release on every rebuild.
+RUN --mount=type=cache,target=/tmp/composer,sharing=locked \
+	mkdir -p /opt/kirby-cli \
+	&& COMPOSER_HOME=/tmp/composer composer require --working-dir=/opt/kirby-cli \
+		getkirby/cli \
+		--no-interaction \
+		--no-progress \
+		--no-audit \
+		--optimize-autoloader \
+	&& test -x /opt/kirby-cli/vendor/bin/kirby
+
 
 # ---------------------------------------------------------------------------
 # Final image.
@@ -137,10 +151,16 @@ RUN rm -rf /app
 COPY --from=builder --chown=kirby:kirby /kit/ /app/
 COPY --chown=kirby:kirby app/ /app/
 
+# The CLI finds the site through ./public/index.php in its working directory,
+# which is why it works from /app, the image's WORKDIR, and not from anywhere
+# else.
+COPY --from=builder /opt/kirby-cli/ /opt/kirby-cli/
+
 # `frankenphp validate` at the end turns a broken Caddyfile into a failed build
 # instead of a failed deployment.
 RUN set -eux; \
 	chmod +x /usr/local/bin/kirby-entrypoint; \
+	ln -s /opt/kirby-cli/vendor/bin/kirby /usr/local/bin/kirby; \
 	mkdir -p /app/site/plugins; \
 	test -f /app/public/index.php; \
 	test -f /app/site/config/config.php; \
