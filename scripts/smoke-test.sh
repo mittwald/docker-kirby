@@ -214,6 +214,9 @@ assert_eq "1000" "$(docker exec "$CONTAINER" id -g)" "runs with the kirby group"
 if [ -n "$EXPECTED_KIRBY" ]; then
 	assert_eq "$EXPECTED_KIRBY" "$(docker exec "$CONTAINER" php -r 'require "/app/kirby/bootstrap.php"; echo Kirby::version();')" "Kirby reports the pinned version"
 	assert_eq "$EXPECTED_KIRBY" "$(docker exec "$CONTAINER" printenv KIRBY_VERSION)" "KIRBY_VERSION environment variable"
+	# The CLI prints an error and still exits 0 when it cannot find the site,
+	# so only the version it reports proves that it booted this installation.
+	assert_eq "$EXPECTED_KIRBY" "$(docker exec "$CONTAINER" kirby version 2>&1)" "Kirby CLI finds the installation from the working directory"
 fi
 
 if [ -n "$EXPECTED_PHP" ]; then
@@ -336,6 +339,7 @@ done
 
 docker exec "$CONTAINER" sh -c 'mkdir -p /app/storage/content/relocated && printf "Title: Relocated\n" > /app/storage/content/relocated/default.txt'
 assert_eq "200" "$(status_of /relocated)" "Kirby reads pages from the relocated content root"
+assert_contains "$(docker exec "$CONTAINER" kirby roots 2>&1)" '"/app/storage/content"' "Kirby CLI sees the relocated content root"
 
 docker rm -f "$CONTAINER" >/dev/null
 CONTAINER=""

@@ -55,7 +55,7 @@ plainkit is not released in lockstep with the CMS — its 4.x line stopped at 4.
 
 The image uses Kirby's [public/private folder setup](https://getkirby.com/docs/guide/configuration/custom-folder-setup): only `/app/public` is reachable over HTTP. `content`, `site`, `kirby`, `storage` and `composer.json` are not below the document root and therefore cannot be served at all, which is a stronger guarantee than blocking their paths in the web server. plainkit ships the flat layout instead, so the build moves `media` under `public/`, drops plainkit's `index.php` and `.htaccess`, and collects the writable directories in `storage/`.
 
-The container runs as the unprivileged user `kirby` (uid/gid `1000:1000`).
+The container runs as the unprivileged user `kirby` (uid/gid `1000:1000`). The [Kirby CLI](#kirby-cli) is installed as `kirby`.
 
 ## Persistent data
 
@@ -212,6 +212,22 @@ The entrypoint creates the account with the `admin` role **only while no account
 The password stays in the container's environment for as long as the variable is set, so prefer `KIRBY_ADMIN_PASSWORD_FILE` with a mounted secret, or remove the variables once the account exists and change the password in the panel.
 
 If the account cannot be created — a missing password, one Kirby rejects, a plugin that fails to load — the container exits with an error instead of starting without an admin. Start a single replica for the first run: two containers starting at the same moment on an empty accounts volume could both try to create the account.
+
+## Kirby CLI
+
+The [Kirby CLI](https://github.com/getkirby/cli) is preinstalled as `kirby`:
+
+```sh
+docker exec my-kirby kirby clear:cache
+docker exec my-kirby kirby uuid:populate
+docker run --rm mittwald/kirby:5 kirby version
+```
+
+It finds the site through `./public/index.php` relative to its working directory, so run it from `/app`, which is the image's working directory and therefore the default for `docker exec` and `docker run`. From anywhere else it prints `The Kirby installation could not be found`. Because it boots the same front controller as the web server, `KIRBY_ROOT_*` and the `KIRBY_*` options apply to it too.
+
+The CLI lives in `/opt/kirby-cli`, apart from the site's own `composer.json`, so its dependencies do not affect the plugins you install. It is updated to the latest release whenever the image is rebuilt.
+
+Commands that change the installation itself — `upgrade`, `install`, `plugin:install` and the `migrate:*` commands — do not belong in a running container: the Kirby version is pinned by the tag, and anything written outside the volumes is lost when the container is replaced. Make those changes in your own image instead, as below. The same goes for `make:*`, which writes into `site/`.
 
 ## Building your own site on top
 
