@@ -37,7 +37,7 @@ jobs:
     outputs:
       handoffs: ${{ steps.check.outputs.handoffs }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check Kirby and FrankenPHP for changes
         id: check
@@ -52,7 +52,7 @@ jobs:
       # green run means the new PHP version actually boots and serves Kirby.
       - name: Open pull request for the applied changes
         if: steps.check.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: automation/versions-update
           base: main
