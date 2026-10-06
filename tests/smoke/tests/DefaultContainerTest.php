@@ -169,6 +169,15 @@ final class DefaultContainerTest extends SmokeTestCase
 		self::assertSame($expected, self::$kirby->exec('printenv', 'KIRBY_VERSION'));
 	}
 
+	/**
+	 * The CLI prints an error and still exits 0 when it cannot find the site,
+	 * so only the version it reports proves that it booted this installation.
+	 */
+	public function testKirbyCliFindsTheInstallationFromTheWorkingDirectory(): void
+	{
+		self::assertSame(self::expected('kirby'), self::$kirby->exec('kirby', 'version'));
+	}
+
 	public function testPhpVersion(): void
 	{
 		self::assertSame(self::expected('php'), self::$kirby->exec(

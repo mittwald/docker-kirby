@@ -41,4 +41,9 @@ final class RelocatedRootsTest extends SmokeTestCase
 		self::$kirby->exec('sh', '-c', 'mkdir -p /app/storage/content/relocated && printf "Title: Relocated\n" > /app/storage/content/relocated/default.txt');
 		self::assertSame(200, self::$kirby->get('/relocated')->status);
 	}
+
+	public function testKirbyCliSeesTheRelocatedContentRoot(): void
+	{
+		self::assertStringContainsString('"/app/storage/content"', self::$kirby->exec('kirby', 'roots'));
+	}
 }
