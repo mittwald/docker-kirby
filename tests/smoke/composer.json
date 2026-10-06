@@ -1,0 +1,22 @@
+{
+  "name": "mittwald/kirby-smoke-test",
+  "description": "Smoke tests for the mittwald/kirby container images. Run through scripts/smoke-test.sh.",
+  "type": "project",
+  "license": "MIT",
+  "require": {
+    "php": ">=8.4",
+    "phpunit/phpunit": "^12.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Mittwald\\KirbySmoke\\": "src/",
+      "Mittwald\\KirbySmoke\\Tests\\": "tests/"
+    }
+  },
+  "config": {
+    "platform": {
+      "php": "8.4.0"
+    },
+    "sort-packages": true
+  }
+}

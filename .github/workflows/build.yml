@@ -92,6 +92,14 @@ jobs:
           cache-from: type=gha,scope=kirby-${{ matrix.branch }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=kirby-${{ matrix.branch }}-${{ matrix.arch }}
 
+      # For the smoke test suite on the runner, not for the image: the image
+      # brings its own PHP.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          tools: composer
+          coverage: none
+
       - name: Smoke test
         env:
           BRANCH: ${{ matrix.branch }}
