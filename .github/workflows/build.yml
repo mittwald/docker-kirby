@@ -100,7 +100,10 @@ jobs:
           tools: composer
           coverage: none
 
+      # A backstop: every docker call and HTTP request in the suite has its own
+      # bound, so reaching this means something the suite does not cover hung.
       - name: Smoke test
+        timeout-minutes: 20
         env:
           BRANCH: ${{ matrix.branch }}
           KIRBY_VERSION: ${{ matrix.kirby_version }}
