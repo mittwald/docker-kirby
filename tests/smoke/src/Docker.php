@@ -18,6 +18,13 @@ final class Docker
 	public static string $runId = 'kirby-smoke';
 
 	/**
+	 * Upper bound for a single docker call. Nothing the suite runs comes
+	 * close; it exists so a docker CLI that stops answering fails the run with
+	 * the command it was stuck on, instead of hanging until a CI timeout.
+	 */
+	public const int TIMEOUT_SECONDS = 120;
+
+	/**
 	 * Runs docker and returns its stdout with trailing newlines removed, like
 	 * a shell's command substitution. A non-zero exit is an exception: a
 	 * command that failed must never look like one that printed nothing.
@@ -42,7 +49,10 @@ final class Docker
 	}
 
 	/**
-	 * Runs docker and reports the exit code instead of throwing.
+	 * Runs docker and reports the exit code instead of throwing. Only a call
+	 * that outlives TIMEOUT_SECONDS throws: it has no exit code to report, and
+	 * inventing one would let isRunning() mistake a hung CLI for a stopped
+	 * container.
 	 *
 	 * @param list<string> $args
 	 * @return array{int, string, string} exit code, stdout, stderr
@@ -68,7 +78,28 @@ final class Docker
 		}
 		fclose($pipes[0]);
 
-		$exitCode = proc_close($process);
+		$deadline = microtime(true) + self::TIMEOUT_SECONDS;
+		while (($status = proc_get_status($process))['running']) {
+			if (microtime(true) >= $deadline) {
+				proc_terminate($process, 9);
+				proc_close($process);
+				rewind($stdout);
+				rewind($stderr);
+				throw new RuntimeException(sprintf(
+					"docker %s did not finish within %ds and was killed\n--- stdout\n%s\n--- stderr\n%s",
+					implode(' ', $args),
+					self::TIMEOUT_SECONDS,
+					(string) stream_get_contents($stdout),
+					(string) stream_get_contents($stderr),
+				));
+			}
+			usleep(20_000);
+		}
+
+		// From the status, not proc_close(): once proc_get_status() has seen
+		// the process exit, proc_close() can no longer report its exit code.
+		$exitCode = $status['exitcode'];
+		proc_close($process);
 
 		rewind($stdout);
 		rewind($stderr);
