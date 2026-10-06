@@ -20,6 +20,7 @@ HADOLINT_IMAGE="hadolint/hadolint:v2.14.0"
 SHELLCHECK_IMAGE="koalaman/shellcheck:v0.11.0"
 ACTIONLINT_IMAGE="rhysd/actionlint:1.7.10"
 PHP_IMAGE="dunglas/frankenphp:1-php8.4-trixie"
+COMPOSER_IMAGE="composer:2.9"
 
 FAILED=()
 
@@ -57,7 +58,14 @@ check_python() {
 
 check_php() {
 	docker run --rm -v "$PWD:/src" -w /src --entrypoint sh "$PHP_IMAGE" -c \
-		'find image -name "*.php" -print0 | xargs -0 -n1 php -l'
+		'find image tests/smoke -name "*.php" -not -path "*/vendor/*" -print0 | xargs -0 -n1 php -l'
+}
+
+# The smoke test suite's lock file has to match its manifest, or CI's
+# `composer install` fails before a single test runs.
+check_composer() {
+	docker run --rm -v "$PWD/tests/smoke:/app" -w /app "$COMPOSER_IMAGE" \
+		validate --strict --no-check-publish
 }
 
 check_caddyfile() {
@@ -81,7 +89,7 @@ check_versions() {
 
 # --- driver -----------------------------------------------------------------
 
-declare -a CHECKS=(hadolint shellcheck actionlint python php caddyfile versions)
+declare -a CHECKS=(hadolint shellcheck actionlint python php composer caddyfile versions)
 
 if [ $# -gt 0 ]; then
 	CHECKS=("$@")

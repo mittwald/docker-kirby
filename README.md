@@ -290,9 +290,11 @@ opencode.json           model config for the agent tasks
 scripts/
   resolve-versions.py   versions.json + Packagist -> build matrix
   check-updates.py      finds new Kirby majors and PHP bumps
-  smoke-test.sh         starts a built image and asserts it serves Kirby
+  smoke-test.sh         runs tests/smoke against a built image
   local-build.sh        builds all branches locally, host architecture only
   lint.sh               every static check, pinned; CI runs exactly this
+tests/smoke/            PHPUnit suite that starts a built image and asserts
+                        it serves Kirby, one class per scenario
 .github/workflows/      ci, publish, lint, update-versions, docs-audit,
                         release-health; build and agent-task (both reusable)
 .agents/skills/         maintenance tasks that need judgement, run by agents
@@ -362,9 +364,12 @@ python3 scripts/resolve-versions.py
 docker buildx build --build-arg KIRBY_VERSION=5.5.3 --build-arg PLAINKIT_CONSTRAINT='^5.0' \
   -t kirby:dev --load ./image
 scripts/smoke-test.sh kirby:dev --kirby-version 5.5.3 --php-version 8.4
+scripts/smoke-test.sh kirby:dev --filter FirstAdmin   # one scenario
 ```
 
-`scripts/lint.sh` runs every static check — hadolint, shellcheck, actionlint, the Python tests, `php -l`, Caddyfile formatting and the `versions.json` checks. CI runs that same script with the same pinned, containerised tools, so a green run locally is a green run in CI. Pass a name to run one check: `scripts/lint.sh hadolint`.
+The smoke test is a PHPUnit suite in `tests/smoke` and needs `php` (8.4 or later) and `composer` on the host; the script installs the suite's dependencies itself.
+
+`scripts/lint.sh` runs every static check — hadolint, shellcheck, actionlint, the Python tests, `php -l`, the smoke suite's `composer.json`, Caddyfile formatting and the `versions.json` checks. CI runs that same script with the same pinned, containerised tools, so a green run locally is a green run in CI. Pass a name to run one check: `scripts/lint.sh hadolint`.
 
 ## License
 

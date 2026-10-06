@@ -30,7 +30,15 @@ reason the script exists.
 The smoke test starts real containers and asserts the image serves Kirby, that
 `content`, `site` and `kirby` are unreachable over HTTP, that volumes survive a
 container replacement, and that the root-to-`kirby` privilege drop works. If it
-fails, fix the image, not the assertion. Relax an assertion only when you can
+fails, fix the image, not the assertion.
+
+It is a PHPUnit suite in `tests/smoke` and needs `php` ≥ 8.4 and `composer` on
+the host. Each scenario is one class under `tests/smoke/tests` that starts its
+containers in `setUpBeforeClass()`; a new check is a test method or a row in a
+data provider, a new scenario a new class. Anything that has to run inside
+Kirby goes into `tests/smoke/probes` as a script that prints one JSON object,
+so a probe that never ran is an error, not an empty result.
+`--filter <Class>` runs one scenario. Relax an assertion only when you can
 point at a deliberate upstream change, and say so.
 
 ## What must stay true
@@ -166,7 +174,8 @@ image/
   share/                env-options.php (KIRBY_* -> Kirby options), roots.php
                         and create-admin.php, outside /app on purpose
   app/                  the only two application files this repo owns
-scripts/                lint, build, smoke test, version resolution
+scripts/                lint, build, smoke test entry point, version resolution
+tests/smoke/            the smoke test: PHPUnit scenarios, harness, probes
 .github/workflows/      ci, publish, lint, update-versions, docs-audit,
                         release-health; build.yml and agent-task.yml are
                         reusable
