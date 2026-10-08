@@ -67,9 +67,20 @@ Three paths hold state and are declared as volumes:
 | `/app/storage` | Panel accounts, sessions, cache, logs | Users logged out, accounts gone |
 | `/app/public/media` | Thumbnails generated from content | Nothing permanent; regenerated on demand, at a cost |
 
-`site/plugins` is deliberately **not** a volume. Plugins are code: they belong in your image, either committed under `site/plugins` or installed with `composer require`. A plugin directory that lives in a volume never gets updated when the image is rebuilt, which is the kind of drift that only shows up during an incident.
-
 Because the paths are declared with `VOLUME`, a plain `docker run` creates anonymous volumes for them. Name them, as in the quick start above, or `docker run --rm` and let them be discarded.
+
+### Persisting the site
+
+Templates, snippets, blueprints, plugins and the config live in `/app/site`. There are two ways to change them:
+
+- **Mount a volume at `/app/site`** and edit the site in place, without building anything. When the container starts with an empty site volume, the entrypoint copies the site the image ships into it, so it works the same on platforms that hand the container an empty volume and with an empty bind mount. Once the volume holds anything, it is left alone.
+- **Build your own image** `FROM mittwald/kirby:5` that copies your site into `/app/site`, so that site and image are versioned together.
+
+A persisted site is yours from its first start: image updates bring new Kirby releases and the `KIRBY_*` handling in `/usr/local/share/kirby/env-options.php`, but never touch the templates or plugins in the volume. Keep the `require` of `env-options.php` in `site/config/config.php`, or the `KIRBY_*` variables stop working. The empty volume has to be writable by uid `1000`, or the container has to start as root once so the entrypoint can take ownership.
+
+OPcache does not check files for changes by default, so a template edited in the volume only shows after a restart. Set `PHP_OPCACHE_VALIDATE_TIMESTAMPS=1` if you edit the site while it runs.
+
+`/app/site` is not declared with `VOLUME`. If it were, `docker compose` would carry an anonymous site volume over every time a container is recreated, and an image built with its own site would keep serving the site from its first deployment.
 
 ### Relocating the roots
 
@@ -227,11 +238,11 @@ It finds the site through `./public/index.php` relative to its working directory
 
 The CLI lives in `/opt/kirby-cli`, apart from the site's own `composer.json`, so its dependencies do not affect the plugins you install. It is updated to the latest release whenever the image is rebuilt.
 
-Commands that change the installation itself — `upgrade`, `install`, `plugin:install` and the `migrate:*` commands — do not belong in a running container: the Kirby version is pinned by the tag, and anything written outside the volumes is lost when the container is replaced. Make those changes in your own image instead, as below. The same goes for `make:*`, which writes into `site/`.
+Commands that change the installation itself — `upgrade`, `install`, `plugin:install` and the `migrate:*` commands — do not belong in a running container: the Kirby version is pinned by the tag, and anything written outside the volumes is lost when the container is replaced. Make those changes in your own image instead, as below. The same goes for `make:*`, which writes into `site/`, unless `site/` is [a volume](#persisting-the-site).
 
 ## Building your own site on top
 
-This is the intended way to use the image. Your content and code live in your repository and become an immutable image; only runtime state lives in volumes.
+When your site is in a repository, this turns it into an immutable image, and only runtime state lives in volumes. Editing the site on a running deployment instead is covered under [Persisting the site](#persisting-the-site).
 
 ```dockerfile
 FROM mittwald/kirby:5

@@ -151,6 +151,11 @@ RUN rm -rf /app
 COPY --from=builder --chown=kirby:kirby /kit/ /app/
 COPY --chown=kirby:kirby app/ /app/
 
+# A copy of the site as it ships goes to /usr/local/share/kirby/site, outside
+# /app, so that the entrypoint can seed an empty volume mounted over /app/site.
+# Docker copies image contents into a new named volume by itself, but not every
+# platform does, and a bind mount never gets them.
+#
 # The CLI finds the site through ./public/index.php in its working directory,
 # which is why it works from /app, the image's WORKDIR, and not from anywhere
 # else.
@@ -165,6 +170,7 @@ RUN set -eux; \
 	test -f /app/public/index.php; \
 	test -f /app/site/config/config.php; \
 	test -d /app/site/templates; \
+	cp -a /app/site /usr/local/share/kirby/site; \
 	frankenphp validate --config /etc/caddy/Caddyfile --adapter caddyfile; \
 	chown -R kirby:kirby /app /data/caddy /config/caddy
 
