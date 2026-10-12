@@ -140,7 +140,8 @@ if (isset($options['email']['transport']['username']) || isset($options['email']
 // file, or the value the entrypoint generated in the storage root.
 $roots   = require __DIR__ . '/roots.php';
 $secrets = require __DIR__ . '/secrets.php';
-$storage = $roots(($read('KIRBY_APP_ROOT') ?? '/app') . '/public')['storage'];
+$paths   = $roots(($read('KIRBY_APP_ROOT') ?? '/app') . '/public');
+$storage = $paths['storage'];
 
 foreach ($secrets($storage) as $option => [$variable, $generated]) {
 	$secret = $read($variable);
@@ -153,6 +154,28 @@ foreach ($secrets($storage) as $option => [$variable, $generated]) {
 	if ($secret !== null && $secret !== '') {
 		$set($options, $option, $secret);
 	}
+}
+
+// The Panel saves languages and their variables as PHP files in the site
+// root. When that root is part of the container, they are lost with it, and
+// the content Kirby renamed for them stays behind as *.<code>.txt files the
+// site no longer reads. Changes that cannot last are refused before Kirby
+// writes anything. The hook names contain dots, so they bypass $set, and the
+// closure is not static because Kirby binds itself to every hook it runs.
+$refuse = function () use ($paths): void {
+	$persisted = require __DIR__ . '/persisted.php';
+
+	if ($persisted($paths['site']) === false) {
+		throw new Kirby\Exception\PermissionException(
+			'Languages are stored in ' . $paths['site'] . '/languages, which this container does not keep: ' .
+			'the change would be lost when the container is replaced. Mount a volume at ' . $paths['site'] .
+			', or add the language to site/languages in your own image.'
+		);
+	}
+};
+
+foreach (['create', 'update', 'delete'] as $action) {
+	$options['hooks']['language.' . $action . ':before'] = $refuse;
 }
 
 if (($json = $read('KIRBY_OPTIONS_JSON')) !== null) {

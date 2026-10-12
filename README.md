@@ -82,6 +82,12 @@ OPcache does not check files for changes by default, so a template edited in the
 
 `/app/site` is not declared with `VOLUME`. If it were, `docker compose` would carry an anonymous site volume over every time a container is recreated, and an image built with its own site would keep serving the site from its first deployment.
 
+#### Languages
+
+Kirby stores languages and their variables as PHP files in `site/languages`. The Panel can only add, change or delete them when `/app/site` is a volume or a bind mount, or lies below one; otherwise it refuses with an error, because the change would be lost with the container. A site built into your own image ships its languages in `site/languages`.
+
+When Kirby adds the first language, it renames the content files to `*.<code>.txt`. A container whose content holds such files while `site/languages` defines no language refuses to start, because Kirby would read none of that content. If that happens, restore the language files the error names from a backup, into the site volume or your image. Do not add the languages again in the Panel: Kirby would convert the content a second time and overwrite parts of it.
+
 ### Relocating the roots
 
 Content and storage can be moved. Usually there is no reason to, but on a platform that attaches only one volume per container, you can point content inside the storage volume:
@@ -219,7 +225,7 @@ Or mount it as a secret and point at the file, which keeps it out of `docker ins
 -e KIRBY_LICENSE_FILE=/run/secrets/kirby-license
 ```
 
-The entrypoint writes it to `site/config/.license` with mode `600` on every start, so the license does not have to be persisted in a volume.
+The entrypoint writes it to `site/config/.license` with mode `600` on every start, so the license does not have to be persisted in a volume. A license activated in the Panel instead is written to the same file and is lost with the container unless `/app/site` is [persisted](#persisting-the-site).
 
 ### First panel account
 
