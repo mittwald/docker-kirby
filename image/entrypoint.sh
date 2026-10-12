@@ -129,11 +129,15 @@ install_license() {
 	[ -n "${KIRBY_LICENSE_FILE:-}${KIRBY_LICENSE:-}" ] || return 0
 
 	# A mounted site of the operator's own need not have a config directory.
-	mkdir -p "${site_root}/config" 2>/dev/null \
-		|| fail "cannot create ${site_root}/config for the license file. Make ${site_root} writable for uid $(id -u)."
+	if ! mkdir -p "${site_root}/config" 2>/dev/null; then
+		fail "cannot create ${site_root}/config for the license file. Make ${site_root} writable for uid $(id -u)."
+	fi
 
 	if [ -n "${KIRBY_LICENSE_FILE:-}" ]; then
-		[ -r "${KIRBY_LICENSE_FILE}" ] || fail "KIRBY_LICENSE_FILE=${KIRBY_LICENSE_FILE} is not readable"
+		if [ ! -r "${KIRBY_LICENSE_FILE}" ]; then
+			fail "KIRBY_LICENSE_FILE=${KIRBY_LICENSE_FILE} is not readable"
+		fi
+
 		cat "${KIRBY_LICENSE_FILE}" > "${license_root}"
 	elif [ -n "${KIRBY_LICENSE:-}" ]; then
 		printf '%s' "${KIRBY_LICENSE}" > "${license_root}"

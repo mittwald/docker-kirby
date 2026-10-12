@@ -83,8 +83,11 @@ final class Container
 
 	public function port(int $containerPort): int
 	{
-		return $this->ports[$containerPort]
-			?? throw new RuntimeException("{$this->name} does not publish port {$containerPort}");
+		if (isset($this->ports[$containerPort]) === false) {
+			throw new RuntimeException("{$this->name} does not publish port {$containerPort}");
+		}
+
+		return $this->ports[$containerPort];
 	}
 
 	public function waitHealthy(): void

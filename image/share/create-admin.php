@@ -33,20 +33,32 @@ $read = static function (string $name): ?string {
 	return is_string($value) && $value !== '' ? $value : null;
 };
 
-$index = $argv[1] ?? $fail('usage: create-admin.php DOCUMENT_ROOT');
-$email = $read('KIRBY_ADMIN_EMAIL') ?? $fail('KIRBY_ADMIN_PASSWORD is set, but KIRBY_ADMIN_EMAIL is not');
+if (isset($argv[1]) === false) {
+	$fail('usage: create-admin.php DOCUMENT_ROOT');
+}
+
+$index = $argv[1];
+$email = $read('KIRBY_ADMIN_EMAIL');
+
+if ($email === null) {
+	$fail('KIRBY_ADMIN_PASSWORD is set, but KIRBY_ADMIN_EMAIL is not');
+}
 
 $password = $read('KIRBY_ADMIN_PASSWORD');
 
 if ($password === null && ($file = $read('KIRBY_ADMIN_PASSWORD_FILE')) !== null) {
-	is_readable($file) || $fail('KIRBY_ADMIN_PASSWORD_FILE=' . $file . ' is not readable');
+	if (is_readable($file) === false) {
+		$fail('KIRBY_ADMIN_PASSWORD_FILE=' . $file . ' is not readable');
+	}
 
 	// Only the line break an editor or `echo` leaves at the end is dropped;
 	// other whitespace may be part of the password.
 	$password = rtrim((string)file_get_contents($file), "\r\n");
 }
 
-$password ??= $fail('KIRBY_ADMIN_EMAIL is set, but neither KIRBY_ADMIN_PASSWORD nor KIRBY_ADMIN_PASSWORD_FILE is');
+if ($password === null) {
+	$fail('KIRBY_ADMIN_EMAIL is set, but neither KIRBY_ADMIN_PASSWORD nor KIRBY_ADMIN_PASSWORD_FILE is');
+}
 
 try {
 	require dirname($index) . '/kirby/bootstrap.php';
