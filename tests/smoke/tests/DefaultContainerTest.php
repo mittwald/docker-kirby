@@ -78,8 +78,12 @@ final class DefaultContainerTest extends SmokeTestCase
 		return self::cases('css/style.min.css', 'js/index.min.js');
 	}
 
+	/**
+	 * PHP answers an original on every request it gets, so the status alone
+	 * cannot tell who served it. The file on disk below the document root can.
+	 */
 	#[DataProvider('mediaFiles')]
-	public function testMediaFileIsServedMoreThanOnce(string $kind): void
+	public function testMediaFileIsPublishedWhereTheWebServerServesIt(string $kind): void
 	{
 		self::$media ??= self::$kirby->probe('thumb.php');
 		$path = self::$media[$kind];
@@ -89,6 +93,8 @@ final class DefaultContainerTest extends SmokeTestCase
 			self::assertSame(200, $response->status, "{$path} on the {$request} request");
 			// Kirby adds a charset when it sends the file itself.
 			self::assertStringStartsWith('image/png', (string) $response->header('Content-Type'), "{$path} on the {$request} request");
+
+			self::assertTrue(self::$kirby->succeeds('test', '-f', "/app/public{$path}"), "{$path} is not in /app/public after the {$request} request");
 		}
 	}
 
