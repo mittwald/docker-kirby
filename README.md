@@ -64,7 +64,7 @@ Three paths hold state and are declared as volumes:
 | Path | Contents | Losing it means |
 | --- | --- | --- |
 | `/app/content` | All pages, files and site content | Losing the site |
-| `/app/storage` | Panel accounts, sessions, cache, logs | Users logged out, accounts gone |
+| `/app/storage` | Panel accounts, sessions, cache, logs, the generated [secrets](#secrets) | Users logged out, accounts gone, media URLs changed |
 | `/app/public/media` | Thumbnails generated from content | Nothing permanent; regenerated on demand, at a cost |
 
 Because the paths are declared with `VOLUME`, a plain `docker run` creates anonymous volumes for them. Name them, as in the quick start above, or `docker run --rm` and let them be discarded.
@@ -178,6 +178,8 @@ These map onto [Kirby config options](https://getkirby.com/docs/reference/system
 | `KIRBY_EMAIL_USER` | `email.transport.username` |
 | `KIRBY_EMAIL_PASSWORD`, `KIRBY_EMAIL_PASSWORD_FILE` | `email.transport.password` |
 | `KIRBY_EMAIL_SECURITY` | `email.transport.security` — `tls`, `ssl`, `true` (derived from the port, 587 or 465 only) or `false` |
+| `KIRBY_CONTENT_SALT`, `KIRBY_CONTENT_SALT_FILE` | `content.salt` — generated if unset, see [Secrets](#secrets) |
+| `KIRBY_COOKIE_KEY`, `KIRBY_COOKIE_KEY_FILE` | `cookie.key` — generated if unset, see [Secrets](#secrets) |
 | `KIRBY_OPTIONS_JSON` | Any option, as a JSON object. Merged last, so it wins. |
 
 Setting `KIRBY_EMAIL_USER` or a password also sets `email.transport.auth`, without which Kirby would not log in to the SMTP server. If `KIRBY_EMAIL_SECURITY` is left unset, Kirby uses `ssl`, which is wrong for a server on port 587: set it to `tls` there.
@@ -191,6 +193,16 @@ Login and password reset codes are sent from `noreply@` followed by the host of 
 ```
 
 It is merged into the options built from the variables above: an object such as `{"email":{"presets":{...}}}` adds to the email settings instead of replacing them, while a list such as `routes` or `auth.methods` replaces the existing one as a whole.
+
+### Secrets
+
+Kirby signs the preview links of drafts and unsaved changes with [`content.salt`](https://getkirby.com/security/content-salt), which also goes into every media URL, and signs cookies with `cookie.key`. Left unset, the salt defaults to the path of the content folder. That path is `/app/content` in every container of this image, so anyone could compute preview links to your drafts.
+
+On its first start, the container therefore generates both into the storage root, as `content.salt` and `cookie.key`, and keeps using them from then on. Persist `/app/storage`, or they are generated anew with every container: media URLs change and everybody is logged out.
+
+To manage them yourself, set `KIRBY_CONTENT_SALT` and `KIRBY_COOKIE_KEY`, or point `KIRBY_CONTENT_SALT_FILE` and `KIRBY_COOKIE_KEY_FILE` at mounted secrets. Nothing is generated for a secret that is set this way. Containers that serve the same site need the same salt, either from a shared storage volume or from the environment.
+
+A deployment that started on an image without this generates its secrets on the next start. Its media URLs change once and its users have to log in again; Kirby regenerates the media files on demand.
 
 ### License
 
