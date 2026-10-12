@@ -180,15 +180,16 @@ final class Container
 	 * Like probe(), but served by FrankenPHP rather than run by the CLI, for
 	 * settings that only apply to the server.
 	 *
+	 * @param array<string, string> $headers
 	 * @return array<string, mixed>
 	 */
-	public function webProbe(string $script): array
+	public function webProbe(string $script, array $headers = []): array
 	{
 		$target = '/app/public/_probe.php';
 
 		Docker::run(['exec', '-i', $this->name, 'sh', '-c', "cat > {$target}"], $this->probeSource($script));
 		try {
-			$response = $this->get('/_probe.php');
+			$response = $this->get('/_probe.php', headers: $headers);
 		} finally {
 			$this->exec('rm', '-f', $target);
 		}
@@ -200,12 +201,19 @@ final class Container
 		return $this->decode($script, $response->body);
 	}
 
-	public function get(string $path, bool $follow = false, int $port = 80): Response
+	/** @param array<string, string> $headers */
+	public function get(string $path, bool $follow = false, int $port = 80, array $headers = []): Response
 	{
+		$headerLines = [];
+		foreach ($headers as $name => $value) {
+			$headerLines[] = "{$name}: {$value}";
+		}
+
 		$context = stream_context_create(['http' => [
 			'ignore_errors' => true,
 			'follow_location' => $follow ? 1 : 0,
 			'timeout' => 10,
+			'header' => $headerLines,
 		]]);
 
 		$body = @file_get_contents("http://127.0.0.1:{$this->port($port)}{$path}", false, $context);

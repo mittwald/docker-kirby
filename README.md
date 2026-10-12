@@ -118,7 +118,7 @@ Everything below has a working default. Setting nothing at all gives you a produ
 | --- | --- | --- |
 | `SERVER_NAME` | `:80` | Caddy site address. Set it to a hostname (`example.com`) and Caddy obtains a Let's Encrypt certificate automatically. Use `:8080` for an unprivileged port. |
 | `SERVER_ROOT` | `/app/public` | Document root. |
-| `TRUSTED_PROXIES` | `private_ranges` | Which proxies may set `X-Forwarded-*`. Required for correct client IPs and HTTPS detection behind an ingress. |
+| `TRUSTED_PROXIES` | `private_ranges` | Addresses allowed to name the client in `X-Forwarded-For`, as a space-separated list of CIDR ranges. PHP and Kirby receive the resulting client address as `REMOTE_ADDR`. See [Behind a TLS-terminating proxy](#notes-for-production). |
 | `HEALTH_PORT` | `8090` | Port of the plain-HTTP health listener. |
 | `HEALTH_PATH` | `/healthz` | Path of the health endpoint. |
 | `CADDY_ADMIN` | `off` | Caddy admin API address. |
@@ -297,7 +297,7 @@ volumes:
 
 **Creating the first panel user.** Kirby refuses to run its installer on a non-local host unless you allow it. Set `KIRBY_ADMIN_EMAIL` and `KIRBY_ADMIN_PASSWORD_FILE` instead, as described under [First panel account](#first-panel-account). `KIRBY_PANEL_INSTALL=true` also works, but until the account exists, anyone reaching `/panel` can create an admin user.
 
-**Behind a TLS-terminating proxy.** Keep `SERVER_NAME` on a bare port, set `TRUSTED_PROXIES` if your proxy is outside the private ranges, and set `KIRBY_URL` to the public URL so Kirby generates correct links.
+**Behind a TLS-terminating proxy.** Keep `SERVER_NAME` on a bare port, and set `KIRBY_URL` to the public URL so Kirby generates correct links; Kirby does not read `X-Forwarded-Proto`. Set `TRUSTED_PROXIES` to the address range your proxy connects from, and nothing wider. Kirby blocks logins per client address after `auth.trials` failures. If the proxy is not trusted, every visitor shares its address, and one client can lock everyone out of the panel. A range that is too wide lets anything connecting from inside it choose its own address, and so get around that limit. The default, `private_ranges`, trusts every private network, which is convenient but rarely as narrow as it could be.
 
 **Terminating TLS in the container.** Set `SERVER_NAME` to your hostname and publish ports 80 and 443. Caddy handles certificates on its own, but needs `/data` to be a volume — otherwise it re-requests a certificate on every restart and will hit Let's Encrypt rate limits.
 
