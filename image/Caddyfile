@@ -24,9 +24,16 @@
 	admin {$CADDY_ADMIN:off}
 
 	servers {
-		# Required for correct client IPs and https detection when the image
-		# runs behind an ingress controller or load balancer.
+		# Peers allowed to name the client in X-Forwarded-For. Caddy resolves
+		# {client_ip} from this, and the site block hands it to PHP as
+		# REMOTE_ADDR; without it, every visitor behind an ingress would share
+		# the ingress's address and Kirby's per-IP login throttling.
 		trusted_proxies static {$TRUSTED_PROXIES:private_ranges}
+
+		# Walk X-Forwarded-For from the right and stop at the first untrusted
+		# address. The default takes the leftmost entry, which is whatever the
+		# client sent before the proxy appended the real one.
+		trusted_proxies_strict
 	}
 
 	frankenphp {
@@ -72,10 +79,19 @@
 
 	{$CADDY_SERVER_EXTRA_DIRECTIVES}
 
+	@forwarded_loopback client_ip 127.0.0.1/32 ::1/128
+
 	# `route` keeps these in the order written instead of Caddy's global
 	# directive order, which is what makes the dotfile block reliably win over
-	# the PHP handler.
+	# the PHP handler, and the address below is settled before PHP runs.
 	route {
+		# FrankenPHP sets REMOTE_ADDR from the TCP peer, not from {client_ip}.
+		# Kirby treats a loopback visitor as a development machine and opens
+		# the Panel installer to it, so loopback is only believed when the
+		# peer itself is on loopback, never because a trusted peer forwarded it.
+		vars remote_addr {client_ip}
+		vars @forwarded_loopback remote_addr {remote_host}
+
 		# Kirby stores nothing web-accessible in dotfiles, but plugins and
 		# deployment tooling do (.git, .env, .DS_Store). RE2 has no lookahead,
 		# hence the separate `not path` condition for ACME and security.txt.
@@ -88,7 +104,9 @@
 		# php_server = try_files + php + file_server. Requests for files that
 		# do not exist — pages, the panel, and on-demand thumbnails below
 		# /media — end up in Kirby's front controller.
-		php_server
+		php_server {
+			env REMOTE_ADDR {vars.remote_addr}
+		}
 	}
 }
 
