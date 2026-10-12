@@ -33,7 +33,9 @@ $roots = (require __DIR__ . '/roots.php')($index);
 $defined = glob($roots['site'] . '/languages/*.php');
 $written = glob($roots['content'] . '/site.*.txt');
 
-($defined === false || $written === false) && $fail('cannot list the languages in ' . $roots['site'] . ' and ' . $roots['content']);
+if ($defined === false || $written === false) {
+	$fail('cannot list the languages in ' . $roots['site'] . ' and ' . $roots['content']);
+}
 
 if ($defined !== [] || $written === []) {
 	exit(0);
