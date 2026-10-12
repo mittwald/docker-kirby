@@ -18,6 +18,8 @@ final class VolumePersistenceTest extends SmokeTestCase
 
 	private static Container $replacement;
 
+	private static string $salt;
+
 	public static function setUpBeforeClass(): void
 	{
 		$volumes = [
@@ -30,6 +32,7 @@ final class VolumePersistenceTest extends SmokeTestCase
 		self::$seeded = $first->get('/');
 		$first->exec('sh', '-c', 'mkdir -p /app/content/persisted && printf "Title: Persisted\n" > /app/content/persisted/default.txt');
 		$first->exec('sh', '-c', 'printf "written\n" > /app/storage/cache/smoke-test');
+		self::$salt = $first->probe('secrets.php')['content.salt'];
 		self::stop($first);
 
 		self::$replacement = self::startHealthy('vol2', $volumes);
@@ -48,5 +51,11 @@ final class VolumePersistenceTest extends SmokeTestCase
 	public function testStorageVolumeSurvives(): void
 	{
 		self::assertSame('written', self::$replacement->exec('cat', '/app/storage/cache/smoke-test'));
+	}
+
+	/** A new salt would change every media URL the site has handed out. */
+	public function testGeneratedContentSaltSurvives(): void
+	{
+		self::assertSame(self::$salt, self::$replacement->probe('secrets.php')['content.salt']);
 	}
 }

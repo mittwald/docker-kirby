@@ -135,6 +135,26 @@ if (isset($options['email']['transport']['username']) || isset($options['email']
 	$options['email']['transport']['auth'] = true;
 }
 
+// Kirby's defaults for content.salt and cookie.key are the same in every
+// container of this image. Each comes from its variable, a mounted secret
+// file, or the value the entrypoint generated in the storage root.
+$roots   = require __DIR__ . '/roots.php';
+$secrets = require __DIR__ . '/secrets.php';
+$storage = $roots(($read('KIRBY_APP_ROOT') ?? '/app') . '/public')['storage'];
+
+foreach ($secrets($storage) as $option => [$variable, $generated]) {
+	$secret = $read($variable);
+	$file   = $read($variable . '_FILE') ?? $generated;
+
+	if ($secret === null && is_readable($file)) {
+		$secret = trim((string)file_get_contents($file));
+	}
+
+	if ($secret !== null && $secret !== '') {
+		$set($options, $option, $secret);
+	}
+}
+
 if (($json = $read('KIRBY_OPTIONS_JSON')) !== null) {
 	$decoded = json_decode($json, true);
 

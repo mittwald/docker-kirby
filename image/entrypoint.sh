@@ -2,10 +2,11 @@
 #
 # Entrypoint for the mittwald/kirby images.
 #
-# Prepares the writable roots, materialises the Kirby license and the first
-# panel account from the environment and then hands over to FrankenPHP's own
-# entrypoint. Every step is a no-op when there is nothing to do, so an
-# unconfigured `docker run` still comes up.
+# Prepares the writable roots, generates the secrets Kirby cannot generate
+# itself, materialises the Kirby license and the first panel account from the
+# environment and then hands over to FrankenPHP's own entrypoint. Every step
+# is a no-op when there is nothing to do, so an unconfigured `docker run`
+# still comes up.
 
 set -eu
 
@@ -29,6 +30,7 @@ fail() {
 writable_roots() {
 	storage="${KIRBY_ROOT_STORAGE:-${KIRBY_APP_ROOT}/storage}"
 
+	echo "${storage}"
 	echo "${KIRBY_ROOT_CONTENT:-${KIRBY_APP_ROOT}/content}"
 	echo "${KIRBY_ROOT_MEDIA:-${KIRBY_APP_ROOT}/public/media}"
 	echo "${KIRBY_ROOT_ACCOUNTS:-${storage}/accounts}"
@@ -127,6 +129,13 @@ install_license() {
 	log "installed Kirby license into ${license_root}"
 }
 
+# Generates content.salt and cookie.key into the storage root unless the
+# environment provides them. Kirby's own defaults are the same in every
+# container of this image.
+generate_secrets() {
+	php /usr/local/share/kirby/generate-secrets.php "${KIRBY_APP_ROOT}/public"
+}
+
 # Creates the first panel account from KIRBY_ADMIN_*, so that a deployment
 # reachable only under its public hostname does not need `panel.install`. Runs
 # after the privilege drop, so the account belongs to the kirby user, and does
@@ -141,6 +150,7 @@ drop_privileges_if_root "$@"
 prepare_roots
 seed_site
 install_license
+generate_secrets
 create_admin
 
 exec docker-php-entrypoint "$@"
