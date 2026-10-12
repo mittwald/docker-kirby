@@ -27,10 +27,13 @@ $read = static function (string $name): ?string {
 	return is_string($value) && $value !== '' ? $value : null;
 };
 
-$index   = $argv[1] ?? $fail('usage: generate-secrets.php DOCUMENT_ROOT');
+if (isset($argv[1]) === false) {
+	$fail('usage: generate-secrets.php DOCUMENT_ROOT');
+}
+
 $roots   = require __DIR__ . '/roots.php';
 $secrets = require __DIR__ . '/secrets.php';
-$storage = $roots($index)['storage'];
+$storage = $roots($argv[1])['storage'];
 
 foreach ($secrets($storage) as $option => [$variable, $generated]) {
 	if ($read($variable) !== null) {
@@ -38,7 +41,10 @@ foreach ($secrets($storage) as $option => [$variable, $generated]) {
 	}
 
 	if (($file = $read($variable . '_FILE')) !== null) {
-		is_readable($file) || $fail($variable . '_FILE=' . $file . ' is not readable');
+		if (is_readable($file) === false) {
+			$fail($variable . '_FILE=' . $file . ' is not readable');
+		}
+
 		continue;
 	}
 
@@ -46,12 +52,19 @@ foreach ($secrets($storage) as $option => [$variable, $generated]) {
 		continue;
 	}
 
-	$writable = (is_dir($storage) || @mkdir($storage, 0755, true)) && is_writable($storage);
-	$writable || $fail('cannot generate ' . $option . ': ' . $storage . ' is not writable by the container user. Fix the ownership of the mounted volume, or set ' . $variable . '.');
+	if (is_dir($storage) === false) {
+		@mkdir($storage, 0755, true);
+	}
+
+	if (is_dir($storage) === false || is_writable($storage) === false) {
+		$fail('cannot generate ' . $option . ': ' . $storage . ' is not writable by the container user. Fix the ownership of the mounted volume, or set ' . $variable . '.');
+	}
 
 	umask(0077);
-	file_put_contents($generated, bin2hex(random_bytes(32))) !== false
-		|| $fail('cannot write ' . $generated);
+
+	if (file_put_contents($generated, bin2hex(random_bytes(32))) === false) {
+		$fail('cannot write ' . $generated);
+	}
 
 	$log('generated ' . $option . ' in ' . $generated);
 }

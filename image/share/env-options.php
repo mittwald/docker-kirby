@@ -40,6 +40,22 @@ $bool = static function (string $value): bool {
 	return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
 };
 
+// Kirby takes the protocol by name, or `true` to derive it from the port,
+// which only works for 587 and 465.
+$security = static function (string $value, string $variable): string|bool {
+	if (in_array(strtolower($value), ['tls', 'ssl'], true)) {
+		return strtolower($value);
+	}
+
+	$switch = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+	if ($switch === null) {
+		throw new InvalidArgumentException($variable . ' must be tls, ssl, true or false, got "' . $value . '"');
+	}
+
+	return $switch;
+};
+
 $set = static function (array &$array, string $path, mixed $value): void {
 	$keys = explode('.', $path);
 	$last = array_pop($keys);
@@ -96,15 +112,9 @@ foreach ($map as $option => [$variable, $cast]) {
 	$value = match ($cast) {
 		'bool' => $bool($value),
 		'int'  => (int)$value,
-		'list' => array_values(array_filter(array_map('trim', explode(',', $value)))),
-		// Kirby takes the protocol by name, or `true` to derive it from the
-		// port, which only works for 587 and 465.
-		'security' => match (strtolower($value)) {
-			'tls', 'ssl' => strtolower($value),
-			default      => filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)
-				?? throw new InvalidArgumentException($variable . ' must be tls, ssl, true or false, got "' . $value . '"'),
-		},
-		default => $value,
+		'list'     => array_values(array_filter(array_map('trim', explode(',', $value)))),
+		'security' => $security($value, $variable),
+		default    => $value,
 	};
 
 	// `panel` is both a switch and the parent of `panel.*`. Kirby only checks
