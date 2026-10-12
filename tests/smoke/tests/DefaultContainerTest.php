@@ -87,7 +87,8 @@ final class DefaultContainerTest extends SmokeTestCase
 		foreach (['first', 'second'] as $request) {
 			$response = self::$kirby->get($path);
 			self::assertSame(200, $response->status, "{$path} on the {$request} request");
-			self::assertSame('image/png', $response->header('Content-Type'), "{$path} on the {$request} request");
+			// Kirby adds a charset when it sends the file itself.
+			self::assertStringStartsWith('image/png', (string) $response->header('Content-Type'), "{$path} on the {$request} request");
 		}
 	}
 
