@@ -150,6 +150,12 @@ generate_secrets() {
 	php /usr/local/share/kirby/generate-secrets.php "${KIRBY_APP_ROOT}/public"
 }
 
+# Stops a site whose content was written for languages it no longer defines,
+# before anyone re-adds them in the Panel and damages the content.
+check_languages() {
+	php /usr/local/share/kirby/check-languages.php "${KIRBY_APP_ROOT}/public"
+}
+
 # Creates the first panel account from KIRBY_ADMIN_*, so that a deployment
 # reachable only under its public hostname does not need `panel.install`. Runs
 # after the privilege drop, so the account belongs to the kirby user, and does
@@ -164,6 +170,7 @@ refuse_relocated_media
 drop_privileges_if_root "$@"
 prepare_roots
 seed_site
+check_languages
 install_license
 generate_secrets
 create_admin
