@@ -27,8 +27,11 @@ $fail = static function (string $message) use ($log): never {
 	exit(1);
 };
 
-$index = $argv[1] ?? $fail('usage: check-languages.php DOCUMENT_ROOT');
-$roots = (require __DIR__ . '/roots.php')($index);
+if (isset($argv[1]) === false) {
+	$fail('usage: check-languages.php DOCUMENT_ROOT');
+}
+
+$roots = (require __DIR__ . '/roots.php')($argv[1]);
 
 $defined = glob($roots['site'] . '/languages/*.php');
 $written = glob($roots['content'] . '/site.*.txt');
