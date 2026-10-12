@@ -20,6 +20,9 @@ final class DefaultContainerTest extends SmokeTestCase
 	/** @var array<string, mixed> */
 	private static array $ini;
 
+	/** @var array{original: string, thumb: string}|null */
+	private static ?array $media = null;
+
 	public static function setUpBeforeClass(): void
 	{
 		self::$kirby = self::startHealthy('default', [
@@ -50,6 +53,54 @@ final class DefaultContainerTest extends SmokeTestCase
 		$missing = self::$kirby->get('/this-page-does-not-exist');
 		self::assertSame(404, $missing->status);
 		self::assertStringContainsString('<h1>Error</h1>', $missing->body);
+	}
+
+	// --- media ----------------------------------------------------------------
+	// Kirby renders each of these once and leaves the next request to the web
+	// server, so only a second request shows that the web server finds them.
+
+	/** The Panel loads blank without the assets Kirby links into /media/panel. */
+	#[DataProvider('panelAssets')]
+	public function testPanelAssetIsServedFromMedia(string $asset): void
+	{
+		$login = self::$kirby->get('/steuerung/login', follow: true);
+		self::assertSame(200, $login->status);
+		self::assertMatchesRegularExpression('#/media/panel/[^/"]+/' . preg_quote($asset, '#') . '#', $login->body);
+		preg_match('#/media/panel/[^/"]+/' . preg_quote($asset, '#') . '#', $login->body, $match);
+
+		foreach (['first', 'second'] as $request) {
+			self::assertSame(200, self::$kirby->get($match[0])->status, "{$match[0]} on the {$request} request");
+		}
+	}
+
+	public static function panelAssets(): array
+	{
+		return self::cases('css/style.min.css', 'js/index.min.js');
+	}
+
+	/**
+	 * PHP answers an original on every request it gets, so the status alone
+	 * cannot tell who served it. The file on disk below the document root can.
+	 */
+	#[DataProvider('mediaFiles')]
+	public function testMediaFileIsPublishedWhereTheWebServerServesIt(string $kind): void
+	{
+		self::$media ??= self::$kirby->probe('thumb.php');
+		$path = self::$media[$kind];
+
+		foreach (['first', 'second'] as $request) {
+			$response = self::$kirby->get($path);
+			self::assertSame(200, $response->status, "{$path} on the {$request} request");
+			// Kirby adds a charset when it sends the file itself.
+			self::assertStringStartsWith('image/png', (string) $response->header('Content-Type'), "{$path} on the {$request} request");
+
+			self::assertTrue(self::$kirby->succeeds('test', '-f', "/app/public{$path}"), "{$path} is not in /app/public after the {$request} request");
+		}
+	}
+
+	public static function mediaFiles(): array
+	{
+		return self::cases('original', 'thumb');
 	}
 
 	// --- the skeleton came from plainkit -------------------------------------

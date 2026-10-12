@@ -8,9 +8,11 @@
  * Returns a function that takes the document root and builds the roots below
  * and next to it.
  *
- * Every root can be relocated with an environment variable, which makes it
- * possible to point content, storage and media at a single mounted volume
- * without rebuilding the image.
+ * Every root but media can be relocated with an environment variable, which
+ * makes it possible to point content and storage at a single mounted volume
+ * without rebuilding the image. Media has to stay below the document root,
+ * because the web server serves Kirby's thumbnails and Panel assets from there;
+ * the entrypoint refuses KIRBY_ROOT_MEDIA.
  *
  * @see https://getkirby.com/docs/guide/configuration/custom-folder-setup
  */
@@ -33,7 +35,7 @@ return static function (string $index): array {
 		'base'     => $base,
 		'content'  => $root('CONTENT', $base . '/content'),
 		'site'     => $root('SITE', $base . '/site'),
-		'media'    => $root('MEDIA', $index . '/media'),
+		'media'    => $index . '/media',
 		'storage'  => $storage,
 		'accounts' => $root('ACCOUNTS', $storage . '/accounts'),
 		'cache'    => $root('CACHE', $storage . '/cache'),

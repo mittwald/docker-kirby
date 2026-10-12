@@ -15,6 +15,7 @@ KIRBY_USER="${KIRBY_USER:-kirby}"
 KIRBY_SITE_SKELETON="/usr/local/share/kirby/site"
 
 site_root="${KIRBY_ROOT_SITE:-${KIRBY_APP_ROOT}/site}"
+media_root="${KIRBY_APP_ROOT}/public/media"
 
 log() {
 	printf '[kirby-entrypoint] %s\n' "$*" >&2
@@ -32,11 +33,24 @@ writable_roots() {
 
 	echo "${storage}"
 	echo "${KIRBY_ROOT_CONTENT:-${KIRBY_APP_ROOT}/content}"
-	echo "${KIRBY_ROOT_MEDIA:-${KIRBY_APP_ROOT}/public/media}"
+	echo "${media_root}"
 	echo "${KIRBY_ROOT_ACCOUNTS:-${storage}/accounts}"
 	echo "${KIRBY_ROOT_CACHE:-${storage}/cache}"
 	echo "${KIRBY_ROOT_SESSIONS:-${storage}/sessions}"
 	echo "${KIRBY_ROOT_LOGS:-${storage}/logs}"
+}
+
+# Kirby renders a thumbnail and links the Panel assets once, into the media
+# root, and from then on relies on the web server to serve them below /media.
+# A media root anywhere but /app/public/media is never served: the Panel stays
+# blank and every thumbnail answers 404 from its second request on. Older
+# images accepted KIRBY_ROOT_MEDIA, so refuse it instead of silently ignoring
+# a deployment that still sets it.
+refuse_relocated_media() {
+	[ -n "${KIRBY_ROOT_MEDIA:-}" ] || return 0
+	[ "${KIRBY_ROOT_MEDIA%/}" != "${media_root}" ] || return 0
+
+	fail "KIRBY_ROOT_MEDIA=${KIRBY_ROOT_MEDIA} is not supported. The web server only serves thumbnails and Panel assets from ${media_root}, so the Panel stays blank and thumbnails break anywhere else. Remove the variable; media is regenerated on demand, and ${KIRBY_ROOT_MEDIA} can be deleted."
 }
 
 # Whether the site root is missing or empty, which is what a freshly mounted
@@ -146,6 +160,7 @@ create_admin() {
 	php /usr/local/share/kirby/create-admin.php "${KIRBY_APP_ROOT}/public"
 }
 
+refuse_relocated_media
 drop_privileges_if_root "$@"
 prepare_roots
 seed_site

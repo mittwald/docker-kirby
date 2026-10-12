@@ -9,8 +9,8 @@ use Mittwald\KirbySmoke\SmokeTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
- * The single-volume setup from the README: content and media relocated below
- * the storage root via KIRBY_ROOT_*.
+ * The single-volume setup from the README: content relocated below the
+ * storage root via KIRBY_ROOT_*. Media cannot be relocated.
  */
 final class RelocatedRootsTest extends SmokeTestCase
 {
@@ -21,7 +21,6 @@ final class RelocatedRootsTest extends SmokeTestCase
 		self::$kirby = self::startHealthy('roots', [
 			'-v', self::volume('single') . ':/app/storage',
 			'-e', 'KIRBY_ROOT_CONTENT=/app/storage/content',
-			'-e', 'KIRBY_ROOT_MEDIA=/app/storage/media',
 		]);
 	}
 
@@ -33,7 +32,7 @@ final class RelocatedRootsTest extends SmokeTestCase
 
 	public static function relocatedRoots(): array
 	{
-		return self::cases('/app/storage/content', '/app/storage/media', '/app/storage/accounts');
+		return self::cases('/app/storage/content', '/app/storage/accounts');
 	}
 
 	public function testKirbyReadsPagesFromTheRelocatedContentRoot(): void
@@ -45,5 +44,25 @@ final class RelocatedRootsTest extends SmokeTestCase
 	public function testKirbyCliSeesTheRelocatedContentRoot(): void
 	{
 		self::assertStringContainsString('"/app/storage/content"', self::$kirby->exec('kirby', 'roots'));
+	}
+
+	// --- configurations that must not start ---------------------------------
+
+	/**
+	 * Earlier versions of the README suggested this. The web server only
+	 * serves /app/public/media, so the Panel would load blank.
+	 */
+	public function testARelocatedMediaRootStopsTheContainerAndSaysWhy(): void
+	{
+		$kirby = self::start('roots2', ['-e', 'KIRBY_ROOT_MEDIA=/app/storage/media']);
+		self::assertSame(1, $kirby->waitExited());
+		self::assertStringContainsString('KIRBY_ROOT_MEDIA=/app/storage/media is not supported', $kirby->logs());
+	}
+
+	/** Setting the one supported value changes nothing, so it is accepted. */
+	public function testTheDefaultMediaRootIsAccepted(): void
+	{
+		$kirby = self::startHealthy('roots3', ['-e', 'KIRBY_ROOT_MEDIA=/app/public/media/']);
+		self::assertSame(200, $kirby->get('/')->status);
 	}
 }

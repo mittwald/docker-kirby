@@ -84,15 +84,16 @@ OPcache does not check files for changes by default, so a template edited in the
 
 ### Relocating the roots
 
-Every root can be moved, which is what you want when a platform gives you exactly one mount. Point content and media inside the storage volume:
+Content and storage can be moved. Usually there is no reason to, but on a platform that attaches only one volume per container, you can point content inside the storage volume:
 
 ```sh
 docker run -d -p 8080:80 \
   -v kirby-data:/app/storage \
   -e KIRBY_ROOT_CONTENT=/app/storage/content \
-  -e KIRBY_ROOT_MEDIA=/app/storage/media \
   mittwald/kirby:5
 ```
+
+Media cannot be moved, because the web server only serves thumbnails and Panel assets from `/app/public/media`. Without a volume of its own, it is regenerated after the container is replaced. The container refuses to start when `KIRBY_ROOT_MEDIA` is set, which earlier versions of this README suggested; remove it, and delete the media folder it pointed to.
 
 Two things to know before you do this. The relocated content root starts out **empty** — the seeded content stays behind at `/app/content` and is no longer read, so the site is blank until you add pages. And the mount point has to be writable by uid `1000`: `/app/storage` already is, which is why the example nests below it. Mounting a volume somewhere that does not exist in the image, `/data` for instance, creates it owned by root and the container will refuse to start with an explicit error. Either nest below `/app`, or start the container as root once and let the entrypoint fix the ownership.
 
@@ -101,7 +102,6 @@ Two things to know before you do this. The relocated content root starts out **e
 | `KIRBY_ROOT_BASE` | `/app` |
 | `KIRBY_ROOT_CONTENT` | `/app/content` |
 | `KIRBY_ROOT_SITE` | `/app/site` |
-| `KIRBY_ROOT_MEDIA` | `/app/public/media` |
 | `KIRBY_ROOT_STORAGE` | `/app/storage` |
 | `KIRBY_ROOT_ACCOUNTS` | `<storage>/accounts` |
 | `KIRBY_ROOT_CACHE` | `<storage>/cache` |
