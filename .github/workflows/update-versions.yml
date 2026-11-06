@@ -26,18 +26,23 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   propose:
     name: propose versions.json updates
     runs-on: ubuntu-latest
     if: github.repository == 'mittwald/docker-kirby'
+    # For create-pull-request below, and only in this job.
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
       handoffs: ${{ steps.check.outputs.handoffs }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Check Kirby and FrankenPHP for changes
         id: check
@@ -52,7 +57,7 @@ jobs:
       # green run means the new PHP version actually boots and serves Kirby.
       - name: Open pull request for the applied changes
         if: steps.check.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v8
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           branch: automation/versions-update
           base: main
@@ -80,6 +85,13 @@ jobs:
     name: add the new Kirby major
     needs: propose
     if: needs.propose.outputs.handoffs == 'true'
+    # What agent-task.yml's jobs may use; a called workflow's jobs cannot
+    # hold more than this. The agent reads the titles of the open issues
+    # earlier runs filed (issues: read); it never gets a token that can write.
+    permissions:
+      contents: read
+      actions: read
+      issues: read
     uses: ./.github/workflows/agent-task.yml
     with:
       task: add-kirby-branch

@@ -39,7 +39,9 @@ jobs:
       # One entry per branch and architecture, for the builds themselves.
       build-matrix: ${{ steps.resolve.outputs.build-matrix }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Resolve versions.json against Packagist
         id: resolve
@@ -59,10 +61,12 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve.outputs.build-matrix) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # No setup-qemu-action: every job builds its own architecture.
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build metadata
         id: meta
@@ -71,7 +75,7 @@ jobs:
       # Loaded into the local daemon so the smoke test runs against the exact
       # image this job is about to push.
       - name: Build for testing
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./image
           file: ./image/Dockerfile
@@ -89,12 +93,18 @@ jobs:
             BUILD_DATE=${{ steps.meta.outputs.date }}
           # Per architecture, so the two jobs do not overwrite each other's
           # cache with a layer set the other one cannot use.
-          cache-from: type=gha,scope=kirby-${{ matrix.branch }}-${{ matrix.arch }}
+          #
+          # Only a build that is not published reads it. Any job that runs on
+          # main can write to the Actions cache, the agent tasks included, so
+          # an image that is about to be pushed is built from its sources
+          # alone. Unless no-cache is set, the push below reuses the layers
+          # this step built, in this job's own builder.
+          cache-from: ${{ !inputs.push && format('type=gha,scope=kirby-{0}-{1}', matrix.branch, matrix.arch) || '' }}
           cache-to: type=gha,mode=max,scope=kirby-${{ matrix.branch }}-${{ matrix.arch }}
 
       # For the smoke test suite on the runner, not for the image: the image
       # brings its own PHP.
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: "8.4"
           tools: composer
@@ -115,7 +125,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: inputs.push
-        uses: docker/login-action@v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -126,7 +136,7 @@ jobs:
       - name: Build and push by digest
         id: push
         if: inputs.push
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./image
           file: ./image/Dockerfile
@@ -143,7 +153,6 @@ jobs:
             FRANKENPHP_VERSION=${{ matrix.frankenphp }}
             VCS_REF=${{ github.sha }}
             BUILD_DATE=${{ steps.meta.outputs.date }}
-          cache-from: type=gha,scope=kirby-${{ matrix.branch }}-${{ matrix.arch }}
 
       # An empty file named after the digest: the merge job only needs the name.
       - name: Export digest
@@ -158,7 +167,7 @@ jobs:
 
       - name: Upload digest
         if: inputs.push
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: digests-${{ matrix.branch }}-${{ matrix.arch }}
           path: /tmp/digests/*
@@ -194,17 +203,17 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
     steps:
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Download digests
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: /tmp/digests
           pattern: digests-${{ matrix.branch }}-*
           merge-multiple: true
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}

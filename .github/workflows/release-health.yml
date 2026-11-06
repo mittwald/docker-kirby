@@ -27,10 +27,19 @@ permissions:
 jobs:
   check:
     if: github.repository == 'mittwald/docker-kirby'
+    # What agent-task.yml's jobs may use; a called workflow's jobs cannot
+    # hold more than this. The agent reads workflow runs and the titles of
+    # the open issues earlier runs filed; it never gets a token that can write.
+    permissions:
+      contents: read
+      actions: read
+      issues: read
     uses: ./.github/workflows/agent-task.yml
     with:
       task: release-health-check
       branch-prefix: automation/release-health
+      # The skill's answer to a transient publish failure.
+      allow-publish-rerun: true
       prompt: |
         Run the `release-health-check` skill against this repository.
 

@@ -4,8 +4,9 @@
  * Creates the first panel account from the environment.
  *
  * Run by the entrypoint before the server starts, with the document root as
- * its only argument. Kirby offers its panel installer only on localhost unless
- * `panel.install` is switched on, and switching it on lets whoever reaches the
+ * its only argument. The image only lets the Panel installer answer requests
+ * from the container's loopback interface unless `panel.install` is switched
+ * on (see install-guard.php), and switching it on lets whoever reaches the
  * panel first create an admin. KIRBY_ADMIN_EMAIL and KIRBY_ADMIN_PASSWORD (or
  * KIRBY_ADMIN_PASSWORD_FILE) cover the same need without that window.
  *

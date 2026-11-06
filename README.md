@@ -24,6 +24,8 @@ docker run --rm -p 8080:80 mittwald/kirby:5
 
 That serves a minimal Kirby site on <http://localhost:8080>. It is meant as a starting point, not as something to deploy — for a real site you either mount your own content or build an image on top.
 
+The Panel at <http://localhost:8080/panel> needs a first account. Create it with `-e KIRBY_ADMIN_EMAIL=... -e KIRBY_ADMIN_PASSWORD=...`, or add `-e KIRBY_PANEL_INSTALL=true` to a trial run to use Kirby's installer; see [First panel account](#first-panel-account).
+
 With persistent data:
 
 ```sh
@@ -156,7 +158,7 @@ These map onto [Kirby config options](https://getkirby.com/docs/reference/system
 | `KIRBY_URL` | `url` |
 | `KIRBY_DEBUG` | `debug` |
 | `KIRBY_PANEL` | `panel` — set to `false` to disable the panel entirely |
-| `KIRBY_PANEL_INSTALL` | `panel.install` |
+| `KIRBY_PANEL_INSTALL` | `panel.install` — opens the Panel installer to every visitor until the first account exists, see [First panel account](#first-panel-account) |
 | `KIRBY_PANEL_SLUG` | `panel.slug` |
 | `KIRBY_LANGUAGES` | `languages` |
 | `KIRBY_SMARTYPANTS` | `smartypants` |
@@ -194,6 +196,25 @@ Login and password reset codes are sent from `noreply@` followed by the host of 
 
 It is merged into the options built from the variables above: an object such as `{"email":{"presets":{...}}}` adds to the email settings instead of replacing them, while a list such as `routes` or `auth.methods` replaces the existing one as a whole.
 
+PHP sees the server's environment in `$_SERVER` and `$_ENV`, and with `KIRBY_DEBUG=true` Kirby's error page lists both to whoever triggers an error. The front controller removes the variables above that carry secrets (`KIRBY_ADMIN_PASSWORD`, `KIRBY_EMAIL_PASSWORD`, `KIRBY_CONTENT_SALT`, `KIRBY_COOKIE_KEY`, `KIRBY_LICENSE`, `KIRBY_OPTIONS_JSON`) from `$_SERVER` and `$_ENV` before Kirby starts, whatever your config sets. They are also on the page's `whoops.blocklist`, and the entrypoint drops `KIRBY_ADMIN_PASSWORD` and `KIRBY_LICENSE` from the server's environment once it has used them.
+
+Anything else you pass in the environment, a plugin's API key for instance, is listed unmasked. Add it to `whoops.blocklist` keyed by its name, so that it is merged with the image's entries instead of replacing them:
+
+```php
+<?php
+return array_replace_recursive(
+    require '/usr/local/share/kirby/env-options.php',
+    [
+        'whoops' => ['blocklist' => [
+            '_SERVER' => ['MY_API_KEY' => 'MY_API_KEY'],
+            '_ENV'    => ['MY_API_KEY' => 'MY_API_KEY'],
+        ]],
+    ]
+);
+```
+
+Through `KIRBY_OPTIONS_JSON` the same works as `{"whoops":{"blocklist":{"_SERVER":{"MY_API_KEY":"MY_API_KEY"},"_ENV":{"MY_API_KEY":"MY_API_KEY"}}}}`; a plain list there is accepted too. Setting `whoops` to `true` replaces the blocklist, so your own entries are lost again; `false` switches the page off. Wherever a variable has a `_FILE` variant, a mounted secret keeps the value out of the environment and out of `docker inspect` altogether. Never switch on `KIRBY_DEBUG` on a site the public can reach.
+
 ### Secrets
 
 Kirby signs the preview links of drafts and unsaved changes with [`content.salt`](https://getkirby.com/security/content-salt), which also goes into every media URL, and signs cookies with `cookie.key`. Left unset, the salt defaults to the path of the content folder. That path is `/app/content` in every container of this image, so anyone could compute preview links to your drafts.
@@ -223,7 +244,9 @@ The entrypoint writes it to `site/config/.license` with mode `600` on every star
 
 ### First panel account
 
-Kirby offers its panel installer only on `localhost`. To get an admin account on a deployment that is only reachable under its public hostname, set:
+Kirby's Panel installer creates an admin account for whoever asks while none exists, if Kirby considers the installation local. It decides that by the host a request names — `localhost`, or a name ending in `.local`, `.test` or `.ddev.site` — before it looks at any address, and any client can name such a host. The image therefore only lets the installer answer requests from the container's own loopback interface, unless `KIRBY_PANEL_INSTALL=true` opens it to everybody until the first account exists. Through a published port, even from the same machine, a request does not come from loopback.
+
+To get an admin account, set:
 
 | Variable | Description |
 | --- | --- |
@@ -232,7 +255,7 @@ Kirby offers its panel installer only on `localhost`. To get an admin account on
 
 The entrypoint creates the account with the `admin` role **only while no account exists at all**, before the server starts. After that the variables do nothing: changing `KIRBY_ADMIN_PASSWORD` does not change the password, and an account renamed or deleted in the panel does not come back. The log says which of the two happened on every start.
 
-The password stays in the container's environment for as long as the variable is set, so prefer `KIRBY_ADMIN_PASSWORD_FILE` with a mounted secret, or remove the variables once the account exists and change the password in the panel.
+The entrypoint drops the password from the web server's environment once it has used it, but it stays visible to `docker inspect` and `docker exec` for as long as the variable is set. Prefer `KIRBY_ADMIN_PASSWORD_FILE` with a mounted secret, or remove the variables once the account exists and change the password in the panel.
 
 If the account cannot be created — a missing password, one Kirby rejects, a plugin that fails to load — the container exits with an error instead of starting without an admin. Start a single replica for the first run: two containers starting at the same moment on an empty accounts volume could both try to create the account.
 
@@ -265,8 +288,22 @@ RUN composer require --no-interaction --no-progress \
 
 COPY --chown=kirby:kirby site/ /app/site/
 COPY --chown=kirby:kirby content/ /app/content/
-COPY --chown=kirby:kirby assets/ /app/public/assets/
+COPY assets/ /app/public/assets/
 ```
+
+The document root belongs to root, apart from the media root below it, so that the web server process cannot put a script there; keep what you add to `/app/public` owned by root too. The media root is writable, but nothing in it is ever executed.
+
+Kirby pins some of its dependencies, such as `symfony/yaml`, to one exact release. When a security fix for one of them is out before Kirby pins it, the image ships the fixed patch release under an inline alias, and the `require` section of `/app/composer.json` then contains an entry such as `"symfony/yaml": "7.4.23 as 7.4.21"`. Images built while Kirby already pins the newest patch release have no such entry. The alias stays in the file your image builds on:
+
+- Adding plugins with `composer require`, as above, works as usual.
+- To move `getkirby/cms` to another release yourself, drop the alias first and update Kirby together with its dependencies. Otherwise Composer keeps the exact release the alias requires and refuses a Kirby release that pins a newer one:
+
+  ```dockerfile
+  RUN composer remove --no-update symfony/yaml \
+   && composer require --no-interaction --with-all-dependencies getkirby/cms:5.6.4
+  ```
+
+- If an advisory is later published for the aliased release itself, Composer refuses to resolve it, and `composer require` in your image fails. Build on a freshly pulled base image (`docker build --pull`): the images are rebuilt daily and move to the newest patch release on their own. Until one is out, require the fixed release under the same alias yourself, for example `composer require --no-update "symfony/yaml:7.4.24 as 7.4.21"` followed by `composer update symfony/yaml`.
 
 Replacing `site/config/config.php` is fine — keep the `require` so the `KIRBY_*` variables above keep working:
 
@@ -307,7 +344,9 @@ volumes:
 
 ## Notes for production
 
-**Creating the first panel user.** Kirby refuses to run its installer on a non-local host unless you allow it. Set `KIRBY_ADMIN_EMAIL` and `KIRBY_ADMIN_PASSWORD_FILE` instead, as described under [First panel account](#first-panel-account). `KIRBY_PANEL_INSTALL=true` also works, but until the account exists, anyone reaching `/panel` can create an admin user.
+**Creating the first panel user.** The Panel installer only answers requests from inside the container. Set `KIRBY_ADMIN_EMAIL` and `KIRBY_ADMIN_PASSWORD_FILE` instead, as described under [First panel account](#first-panel-account). `KIRBY_PANEL_INSTALL=true` also works, but until the account exists, anyone reaching `/panel` can create an admin user.
+
+**Setting `KIRBY_URL`.** Set it to the public URL on every deployment. Without it, Kirby takes the host from the request, which any client controls, and uses it for every absolute URL it generates, for the sender of login codes, for the namespace of the page cache and to pick a `site/config/config.<host>.php`. With `KIRBY_URL` set, Kirby ignores the `Host` header.
 
 **Behind a TLS-terminating proxy.** Keep `SERVER_NAME` on a bare port, and set `KIRBY_URL` to the public URL so Kirby generates correct links; Kirby does not read `X-Forwarded-Proto`. Set `TRUSTED_PROXIES` to the address range your proxy connects from, and nothing wider. Kirby blocks logins per client address after `auth.trials` failures. If the proxy is not trusted, every visitor shares its address, and one client can lock everyone out of the panel. A range that is too wide lets anything connecting from inside it choose its own address, and so get around that limit. The default, `private_ranges`, trusts every private network, which is convenient but rarely as narrow as it could be.
 
@@ -326,6 +365,7 @@ versions.json           every image that gets built, as data
 image/                  build context (Dockerfile, Caddyfile, php.ini, entrypoint)
   app/                  the only two application files this repo owns
 opencode.json           model config for the agent tasks
+.github/opencode/       the opencode release the agent tasks run, pinned
 scripts/
   resolve-versions.py   versions.json + Packagist -> build matrix
   check-updates.py      finds new Kirby majors and PHP bumps
@@ -347,16 +387,18 @@ The design goal was that routine upkeep needs no commits.
 - **The site skeleton** is installed from Kirby's plainkit during the build, so templates, blueprints and starting content are never something this repository has to keep in step with upstream.
 - **Security updates** in PHP, FrankenPHP and Debian arrive through the same daily rebuild, which runs with the layer cache disabled so updated packages are actually installed.
 - **PHP bumps** are detected weekly by `scripts/check-updates.py` and applied as a pull request. CI builds and smoke tests it, so a green run means the new PHP version actually serves Kirby and the PR can be merged as it stands.
-- **New Kirby majors** are detected by the same run, but not applied by it. Adding a major needs a plainkit release that may not exist yet, a decision about the `latest` tag, a decision about the branch it replaces, and a README table that nothing generates. So the run hands off to the `add-kirby-branch` skill under [opencode](https://opencode.ai), which does the work, builds it, runs the smoke test and opens the pull request itself — with a briefing carrying the facts the script already checked.
+- **New Kirby majors** are detected by the same run, but not applied by it. Adding a major needs a plainkit release that may not exist yet, a decision about the `latest` tag, a decision about the branch it replaces, and a README table that nothing generates. So the run hands off to the `add-kirby-branch` skill under [opencode](https://opencode.ai), which does the work, builds it, runs the smoke test and hands over the pull request — with a briefing carrying the facts the script already checked.
 - **Documentation drift** — an extension moving from recommended to required, a renamed Kirby root, a plainkit release that adds a directory the build has to place — is audited quarterly by the `kirby-docs-audit` skill, run the same way.
 - **What actually got published** is checked weekly by the `release-health-check` skill: every promised tag exists, is recent, is multi-arch, and still runs. It is looking for the quiet failure — a publish that breaks for one branch while the others stay green, so the images look maintained while one of them has stopped receiving security updates.
-- **GitHub Actions versions** are updated by Dependabot.
+- **GitHub Actions**, pinned to commit SHAs, and **the opencode release** the agent tasks run, pinned in `.github/opencode/package-lock.json`, are updated by Dependabot, a week after their release.
 
 The split is the point. A version string is applied by a script and verified by CI. Anything needing a reader is handed to a skill that has to build the image and pass the smoke test before it may open a pull request.
 
 Each of those runs has three possible endings, and the distinction is what keeps the automation honest: it fixed something, so there is a reviewed pull request; it found something it should not decide alone — moving `latest`, retiring a branch, an expired credential, an upstream outage — so there is an issue saying what a person has to decide; or there was nothing to do, so there is nothing. What it may never do is guess its way past a judgement call, or leave one buried in the body of a pull request that is about to be merged and forgotten.
 
 `.github/workflows/agent-task.yml` is the shared runner for the agent tasks. It owns the rules that are the same every time — never ask questions, verify with a real build, what to do when there is nothing to do — so adding another periodic skill is a caller of about fifteen lines.
+
+The agent reads text anyone can write, such as web pages, release notes and workflow logs, and runs shell commands without asking, so the runner does not trust it. The agent's job holds no credential that can write to GitHub: it leaves its commits, its pull request and its issues behind as files. A second job, which runs no model and none of the agent's code, checks them and only then pushes the branch and opens the pull request and issues. It refuses commits that touch `.github/`, and it does not open an issue whose title matches an open one.
 
 The skills themselves know nothing about the workflows that call them. A skill describes its task and how to verify it, nothing more; run-specific context is the caller's business, and anything a run needs to know belongs in the runner's preamble or the caller's prompt. That is what keeps the same skill usable by hand — `/add-kirby-branch` in an interactive session, with no workflow anywhere in sight — and it is worth preserving when adding new ones.
 
@@ -368,7 +410,8 @@ A few things have to be configured once, or the automation silently does nothing
 
 - `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (an access token with write scope). Without them the publish workflow fails at the login step; CI builds are unaffected because they never push.
 - `MITTWALD_AI_API_KEY`, the key for the model `opencode.json` points at. Only the agent tasks need it.
-- `RELEASE_USER_TOKEN`, a PAT with `repo` scope used by the agent tasks to push and open pull requests. It has to be a PAT rather than the default `GITHUB_TOKEN`: pushes made with `GITHUB_TOKEN` do not trigger workflows, and an agent's pull request whose CI never runs is worse than none.
+- `RELEASE_USER_TOKEN`, a token used by the publish step of the agent tasks, never by the agent itself, to push the agent's branch, open its pull requests and issues, and re-run `publish.yml` when the release health check asks for it. It has to be a PAT rather than the default `GITHUB_TOKEN`: pushes made with `GITHUB_TOKEN` do not trigger workflows, and an agent's pull request whose CI never runs is worse than none. Make it a fine-grained PAT for this repository alone, with read and write access to contents, pull requests, issues and actions and nothing else; in particular, not to workflows.
+- **A protected `main`** that requires a reviewed pull request, so that no token, this one included, can publish an image by pushing to it.
 - **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests**, so `update-versions.yml` can open its PR.
 - Scheduled workflows are disabled automatically on repositories with no activity for 60 days. The daily rebuild is the thing that delivers security updates, so if the repository goes quiet, check that the schedule still fires — the `release-health-check` skill looks for exactly this.
 

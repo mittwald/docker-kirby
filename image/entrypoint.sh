@@ -172,4 +172,9 @@ install_license
 generate_secrets
 create_admin
 
+# The license and the admin password are only needed above. PHP copies the
+# server's environment into $_SERVER and $_ENV, where a debug page, a plugin
+# or a stray phpinfo() would hand them out with every other variable.
+unset KIRBY_LICENSE KIRBY_ADMIN_PASSWORD
+
 exec docker-php-entrypoint "$@"

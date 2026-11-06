@@ -86,8 +86,10 @@ For a real failure, work down this order:
    that has stopped firing, an upstream outage, a repeated failure you have
    diagnosed but should not fix unilaterally. Name which tags are affected, the
    last known good build date, the cause as far as you established it, and what
-   a person has to do. Check the open issues first and do not file a second one
-   for a problem already tracked.
+   a person has to do. Check the open issues first — a list of open issue
+   titles you were given, or else the repository's open issues — and do not
+   file a second one for a problem already tracked. If it is tracked, reuse
+   that issue's title exactly, or file nothing.
 
 The failure that matters most here is the quiet one: a publish that has been
 failing for one branch while the others stay green, so the images look

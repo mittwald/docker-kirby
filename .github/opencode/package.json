@@ -1,0 +1,8 @@
+{
+  "name": "docker-kirby-opencode",
+  "private": true,
+  "description": "The opencode release the agent tasks run, pinned with its checksums. See .github/workflows/agent-task.yml.",
+  "dependencies": {
+    "opencode-ai": "1.19.5"
+  }
+}

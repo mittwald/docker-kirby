@@ -21,6 +21,13 @@ permissions:
 jobs:
   audit:
     if: github.repository == 'mittwald/docker-kirby'
+    # What agent-task.yml's jobs may use; a called workflow's jobs cannot
+    # hold more than this. The agent reads the titles of the open issues
+    # earlier runs filed (issues: read); it never gets a token that can write.
+    permissions:
+      contents: read
+      actions: read
+      issues: read
     uses: ./.github/workflows/agent-task.yml
     with:
       task: kirby-docs-audit

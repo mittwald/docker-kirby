@@ -101,6 +101,21 @@
 		}
 		error @dotfiles 404
 
+		# The media root is the one directory below the document root that
+		# the server process can write to, so nothing in it is ever executed.
+		# A file that exists is served as it is; anything else goes to Kirby,
+		# which renders thumbnails and links Panel assets on demand. That
+		# includes a .php file, a path with one in it and a directory with an
+		# index.php, each of which php_server below would run.
+		route /media/* {
+			@media_file {
+				file {path}
+				not path */ *.php
+			}
+			file_server @media_file
+			rewrite * /index.php
+		}
+
 		# php_server = try_files + php + file_server. Requests for files that
 		# do not exist — pages, the panel, and on-demand thumbnails below
 		# /media — end up in Kirby's front controller.

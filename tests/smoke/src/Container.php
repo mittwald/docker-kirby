@@ -160,6 +160,17 @@ final class Container
 	}
 
 	/**
+	 * Writes a file in the container, as the runtime user unless asked for
+	 * root. Throws if that user cannot write it.
+	 */
+	public function write(string $path, string $content, bool $asRoot = false): void
+	{
+		$user = $asRoot ? ['-u', '0'] : [];
+
+		Docker::run(['exec', '-i', ...$user, $this->name, 'sh', '-c', 'cat > "$0"', $path], $content);
+	}
+
+	/**
 	 * Runs a script from probes/ through the PHP CLI and returns the JSON
 	 * object it prints. A probe that did not run, or printed anything else,
 	 * is an error, never an empty result.
@@ -183,6 +194,9 @@ final class Container
 	 * Like probe(), but served by FrankenPHP rather than run by the CLI, for
 	 * settings that only apply to the server.
 	 *
+	 * Written as root: the document root belongs to root, so that the server
+	 * process cannot put a script there itself.
+	 *
 	 * @param array<string, string> $headers
 	 * @return array<string, mixed>
 	 */
@@ -190,11 +204,11 @@ final class Container
 	{
 		$target = '/app/public/_probe.php';
 
-		Docker::run(['exec', '-i', $this->name, 'sh', '-c', "cat > {$target}"], $this->probeSource($script));
+		$this->write($target, $this->probeSource($script), asRoot: true);
 		try {
 			$response = $this->get('/_probe.php', headers: $headers);
 		} finally {
-			$this->exec('rm', '-f', $target);
+			Docker::run(['exec', '-u', '0', $this->name, 'rm', '-f', $target]);
 		}
 
 		if ($response->status !== 200) {
@@ -226,6 +240,42 @@ final class Container
 		}
 
 		return Response::fromWrapper(http_get_last_response_headers() ?? [], $body);
+	}
+
+	/**
+	 * Sends one request exactly as given, for what PHP's HTTP wrapper cannot
+	 * send: any method with a body, or an absolute request target such as
+	 * `http://localhost/`. HTTP/1.0, so that the response is never chunked
+	 * and ends with the connection.
+	 *
+	 * @param array<string, string> $headers
+	 */
+	public function request(string $method, string $target, array $headers = [], string $body = '', int $port = 80): Response
+	{
+		$socket = @stream_socket_client("tcp://127.0.0.1:{$this->port($port)}", $errorCode, $error, 10);
+		if ($socket === false) {
+			throw new RuntimeException("{$method} {$target} on {$this->name}:{$port} failed: {$error}");
+		}
+		stream_set_timeout($socket, 10);
+
+		$headers += ['Host' => 'localhost', 'Content-Length' => (string) strlen($body), 'Connection' => 'close'];
+		$request = "{$method} {$target} HTTP/1.0\r\n";
+		foreach ($headers as $name => $value) {
+			$request .= "{$name}: {$value}\r\n";
+		}
+		fwrite($socket, $request . "\r\n" . $body);
+
+		$raw = (string) stream_get_contents($socket);
+		$timedOut = stream_get_meta_data($socket)['timed_out'];
+		fclose($socket);
+
+		if ($timedOut || !str_contains($raw, "\r\n\r\n")) {
+			throw new RuntimeException("{$method} {$target} on {$this->name}:{$port} got no complete response:\n{$raw}");
+		}
+
+		[$head, $responseBody] = explode("\r\n\r\n", $raw, 2);
+
+		return Response::fromWrapper(explode("\r\n", $head), $responseBody);
 	}
 
 	private function probeSource(string $script): string

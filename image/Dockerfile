@@ -73,18 +73,31 @@ ENV COMPOSER_ALLOW_SUPERUSER=1
 # Built in /kit rather than /app because the FrankenPHP base image already
 # ships a welcome page at /app/public, and create-project refuses a non-empty
 # target directory.
+#
+# Kirby pins most of its dependencies to one exact release.
+# build/patch-releases.php moves the ones listed there onto their newest patch
+# release before anything is installed, so that a security fix in, say,
+# symfony/yaml does not have to wait for the next Kirby release. `composer audit` then fails the build if
+# what is about to ship still has a known advisory, instead of the image
+# shipping it quietly.
+COPY build/ /usr/local/src/kirby-build/
+
 RUN --mount=type=cache,target=/tmp/composer,sharing=locked \
 	COMPOSER_HOME=/tmp/composer composer create-project \
 		getkirby/plainkit /kit "${PLAINKIT_CONSTRAINT:?PLAINKIT_CONSTRAINT build argument is required}" \
 		--no-interaction \
 		--no-progress \
+		--no-install \
 		--remove-vcs \
+	&& COMPOSER_HOME=/tmp/composer php /usr/local/src/kirby-build/patch-releases.php \
+		/kit "${KIRBY_VERSION:?KIRBY_VERSION build argument is required}" \
 	&& COMPOSER_HOME=/tmp/composer composer require --working-dir=/kit \
-		"getkirby/cms:${KIRBY_VERSION:?KIRBY_VERSION build argument is required}" \
+		"getkirby/cms:${KIRBY_VERSION}" \
 		--no-interaction \
 		--no-progress \
 		--no-audit \
 		--optimize-autoloader \
+	&& COMPOSER_HOME=/tmp/composer composer audit --working-dir=/kit --locked --abandoned=report \
 	&& test -f /kit/kirby/bootstrap.php \
 	&& test "$(php -r 'require "/kit/kirby/bootstrap.php"; echo Kirby::version();')" = "${KIRBY_VERSION}"
 
@@ -112,6 +125,7 @@ RUN --mount=type=cache,target=/tmp/composer,sharing=locked \
 		--no-progress \
 		--no-audit \
 		--optimize-autoloader \
+	&& COMPOSER_HOME=/tmp/composer composer audit --working-dir=/opt/kirby-cli --locked --abandoned=report \
 	&& test -x /opt/kirby-cli/vendor/bin/kirby
 
 
@@ -163,6 +177,17 @@ COPY --from=builder /opt/kirby-cli/ /opt/kirby-cli/
 
 # `frankenphp validate` at the end turns a broken Caddyfile into a failed build
 # instead of a failed deployment.
+#
+# The runtime user owns the tree, so that the site, Composer in derived images
+# and the writable roots keep working, with three exceptions: /app itself,
+# the document root and the front controller belong to root. Whatever the
+# server process can write, it cannot add a script to the document root,
+# replace the front controller or swap out the directory the web server
+# serves. The media root below it stays writable; the Caddyfile never
+# executes anything in it. This does not make the code Kirby loads read-only:
+# the runtime user still owns /app/site (config, plugins, templates),
+# /app/kirby and /app/vendor, so that derived images can run Composer and
+# /app/site can be a volume.
 RUN set -eux; \
 	chmod +x /usr/local/bin/kirby-entrypoint; \
 	ln -s /opt/kirby-cli/vendor/bin/kirby /usr/local/bin/kirby; \
@@ -172,7 +197,10 @@ RUN set -eux; \
 	test -d /app/site/templates; \
 	cp -a /app/site /usr/local/share/kirby/site; \
 	frankenphp validate --config /etc/caddy/Caddyfile --adapter caddyfile; \
-	chown -R kirby:kirby /app /data/caddy /config/caddy
+	chown -R kirby:kirby /app /data/caddy /config/caddy; \
+	chown root:root /app /app/public /app/public/index.php; \
+	chmod 755 /app /app/public; \
+	chmod 644 /app/public/index.php
 
 ENV SERVER_NAME=":80" \
 	SERVER_ROOT="/app/public" \

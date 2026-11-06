@@ -114,5 +114,7 @@ end-of-life branch, moving the `latest` tag, an extension that would grow the
 image noticeably — do not pick one. Leave the code alone and open an issue
 saying what changed upstream, what the options are, and what the trade-off is.
 An issue outlives a merged pull request's body, which is where a deferred
-decision goes to be forgotten. Check the open issues first so a recurring audit
-does not file the same one twice.
+decision goes to be forgotten. Check the open issues first — a list of open
+issue titles you were given, or else the repository's open issues — so a
+recurring audit does not file the same one twice. If it is already tracked,
+reuse that issue's title exactly, or file nothing.
